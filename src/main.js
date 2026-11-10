@@ -70,6 +70,22 @@ let level = ["easy", "medium", "hard", "fiit"].includes(saved.level)
   help = false;
 let progress = saved.progress || {},
   streak = 0;
+const folders = Object.fromEntries(
+  presentations.map((p) => [
+    p.id,
+    typeof saved.folders?.[p.id] === "boolean" ? saved.folders[p.id] : true,
+  ]),
+);
+function rememberFolders() {
+  let changed = false;
+  document.querySelectorAll("[data-folder]").forEach((el) => {
+    if (folders[el.dataset.folder] !== el.open) {
+      folders[el.dataset.folder] = el.open;
+      changed = true;
+    }
+  });
+  if (changed) persist();
+}
 const modules = presentations.flatMap((p) => p.modules);
 const presentation = () =>
   presentations.find((p) => p.modules.some((m) => m.id === moduleId));
@@ -78,7 +94,10 @@ const algo = () => ["fleury", "hierholzer"].includes(moduleId);
 const state = () => history[cursor];
 function persist() {
   try {
-    localStorage.setItem("adm-v1", JSON.stringify({ level, theme, progress }));
+    localStorage.setItem(
+      "adm-v1",
+      JSON.stringify({ level, theme, progress, folders }),
+    );
   } catch {}
 }
 function makeSequence() {
@@ -540,6 +559,7 @@ function graphSVG() {
   return out + "</svg>";
 }
 function render() {
+  rememberFolders();
   if (location.hash === "#nastavenia") {
     renderSettings();
     return;
@@ -553,7 +573,7 @@ function render() {
     s = state(),
     total = Object.values(progress).reduce((a, b) => a + b, 0);
   $("#app").innerHTML =
-    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span><button id="theme" class="circle tonal" aria-label="Prepnúť svetlý a tmavý režim">${theme === "dark" ? "☀" : "☾"}</button></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" open><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="${presentation().source}" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><span>Obťažnosť</span><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><button id="new" class="border round">↻ Nový príklad</button></div><section class="task-card"><h2>${isCv9(moduleId) ? prompt9() : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace ${algo() && mode === "steps" ? "algorithm-steps" : ""}"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${isCv9(moduleId) && g.weighted && matrixMode ? matrix9(g) : graphSVG()}${isCv9(moduleId) && g.weighted ? `<button id="v9-matrix" class="matrix-toggle border">${matrixMode ? "Zobraziť graf" : "Matica váh"}</button>` : ""}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
+    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span><button id="theme" class="circle tonal" aria-label="Prepnúť svetlý a tmavý režim">${theme === "dark" ? "☀" : "☾"}</button></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" data-folder="${p.id}" ${folders[p.id] ? "open" : ""}><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="${presentation().source}" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><span>Obťažnosť</span><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><button id="new" class="border round">↻ Nový príklad</button></div><section class="task-card"><h2>${isCv9(moduleId) ? prompt9() : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace ${algo() && mode === "steps" ? "algorithm-steps" : ""}"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${isCv9(moduleId) && g.weighted && matrixMode ? matrix9(g) : graphSVG()}${isCv9(moduleId) && g.weighted ? `<button id="v9-matrix" class="matrix-toggle border">${matrixMode ? "Zobraziť graf" : "Matica váh"}</button>` : ""}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
       isCv9(moduleId) && !["complete9", "tsp9"].includes(moduleId)
         ? view9(q9, s, {
             draft: draft9,
@@ -594,6 +614,12 @@ function render() {
   bind();
 }
 function bind() {
+  document.querySelectorAll("[data-folder]").forEach(
+    (el) =>
+      (el.ontoggle = () => {
+        if (el.isConnected) rememberFolders();
+      }),
+  );
   document
     .querySelectorAll("[data-v9]")
     .forEach((el) => (el.onclick = () => vertex9(el.dataset.v9)));
