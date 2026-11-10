@@ -1,3 +1,4 @@
+import { summarize, validateBackup, choosePracticeModule } from "./stats.js";
 import "beercss";
 import "./style.css";
 import { presentations, labels, walkLabels, theory } from "./content.js";
@@ -50,14 +51,44 @@ let level = ["easy", "medium", "hard", "fiit"].includes(saved.level)
   help = false;
 let progress = saved.progress || {},
   streak = 0;
+let attempts = Array.isArray(saved.attempts) ? saved.attempts.slice(-2000) : [];
+let activeAttempt = null;
+let statsLimit = 20;
+let completionTimer;
+let finalized = false;
+let trainingMode = saved.trainingMode === "testing" ? "testing" : "learning";
+let feedbackRequested = false;
+let personalization = saved.personalization === true;
 const modules = presentations[0].modules;
 const module = () => modules.find((m) => m.id === moduleId);
 const algo = () => ["fleury", "hierholzer"].includes(moduleId);
 const state = () => history[cursor];
 function persist() {
   try {
-    localStorage.setItem("adm-v1", JSON.stringify({ level, theme, progress }));
+    localStorage.setItem(
+      "adm-v1",
+      JSON.stringify({
+        level,
+        theme,
+        trainingMode,
+        personalization,
+        progress,
+        attempts,
+      }),
+    );
   } catch {}
+}
+function recordAttempt(event) {
+  if (awarded) return;
+  if (!activeAttempt) {
+    activeAttempt = { moduleId, level, errors: 0, hints: 0, solved: false };
+    attempts.push(activeAttempt);
+    attempts = attempts.slice(-2000);
+  }
+  if (event === "error") activeAttempt.errors++;
+  if (event === "hint") activeAttempt.hints++;
+  if (event === "solved") activeAttempt.solved = true;
+  persist();
 }
 function makeSequence() {
   let v = g.vertices[Math.floor(Math.random() * g.vertices.length)],
@@ -120,7 +151,21 @@ function countTask() {
   ];
   return tasks[countVariant];
 }
+function nextExercise() {
+  if (personalization) {
+    moduleId = choosePracticeModule(
+      attempts,
+      modules.map((m) => m.id),
+      level,
+    );
+  }
+  fresh();
+}
 function fresh() {
+  clearTimeout(completionTimer);
+  finalized = false;
+  feedbackRequested = false;
+  activeAttempt = null;
   countVariant = Math.floor(Math.random() * 4);
   g = randomGraph(level, moduleId);
   if (["walk", "cost"].includes(moduleId)) {
@@ -149,11 +194,21 @@ function fresh() {
 }
 function success() {
   if (!awarded) {
+    recordAttempt("solved");
     progress[moduleId] = (progress[moduleId] || 0) + 1;
     streak++;
     awarded = true;
     persist();
+    advanceAfterFeedback();
   }
+}
+function advanceAfterFeedback(delay = 1200) {
+  finalized = true;
+  clearTimeout(completionTimer);
+  const completedGraph = g;
+  completionTimer = setTimeout(() => {
+    if (g === completedGraph && !location.hash && finalized) nextExercise();
+  }, delay);
 }
 function explain(key) {
   const p = properties(g),
@@ -223,6 +278,8 @@ function explain(key) {
   }
 }
 function check() {
+  if (finalized) return;
+  feedbackRequested = false;
   let details = [],
     correct = true;
   if (moduleId === "types" || moduleId === "walk") {
@@ -315,12 +372,17 @@ function check() {
   feedback = {
     ok: correct,
     title: correct ? "Presne tak. Dobrá práca!" : "Ešte to skús upraviť.",
-    details: correct
-      ? ["Odpoveď je správna. Môžeš pokračovať ďalším príkladom."]
-      : details,
+    details: correct ? ["Správne. Pokračujeme ďalším príkladom…"] : details,
   };
   if (correct) success();
-  else streak = 0;
+  else {
+    recordAttempt("error");
+    streak = 0;
+    if (moduleId === "types") {
+      feedback.title = "Tentoraz nesprávne. Pozri si vysvetlenie.";
+      advanceAfterFeedback(4500);
+    }
+  }
   render();
 }
 function walkExplanation(key, info) {
@@ -339,6 +401,8 @@ function walkExplanation(key, info) {
   return `Štart je ${sequence[0]}, koniec ${sequence.at(-1)}. ${info.repeated.length ? "Navyše sa opakujú hrany." : "Hrany sa neopakujú."}`;
 }
 function perform(action, hint = false) {
+  if (finalized) return;
+  feedbackRequested = hint;
   if (
     action.type === "vertex" &&
     state().at !== null &&
@@ -351,6 +415,7 @@ function perform(action, hint = false) {
     );
     const edge = matches.find((e) => !state().used.includes(e.id));
     if (!edge) {
+      recordAttempt("error");
       feedback = {
         ok: false,
         title: "Tento krok zatiaľ neplatí.",
@@ -367,12 +432,14 @@ function perform(action, hint = false) {
   }
   const r = algorithmAction(g, state(), action, moduleId);
   if (r.error) {
+    recordAttempt("error");
     feedback = {
       ok: false,
       title: "Tento krok zatiaľ neplatí.",
       details: [r.error],
     };
   } else {
+    recordAttempt();
     history = history.slice(0, cursor + 1);
     history.push(r.state);
     cursor++;
@@ -388,12 +455,15 @@ function perform(action, hint = false) {
             title: hint ? "Nápoveda doplnila jeden krok." : "Cyklus vložený.",
             details: [r.note || `Pokračujeme vo vrchole ${r.state.at}.`],
           }
-        : null;
+        : { ok: true, title: "Správne.", details: [] };
     if (r.state.done) success();
   }
   render();
 }
 function hint() {
+  if (finalized) return;
+  feedbackRequested = true;
+  if (!(algo() && mode === "steps" && state().done)) recordAttempt("hint");
   if (algo() && mode === "steps") {
     if (!state().done) perform(hintAction(g, state(), moduleId), true);
     return;
@@ -495,6 +565,10 @@ function graphSVG() {
   return out + "</svg>";
 }
 function render() {
+  if (location.hash === "#statistiky") {
+    renderStats();
+    return;
+  }
   if (location.hash === "#nastavenia") {
     renderSettings();
     return;
@@ -504,7 +578,7 @@ function render() {
     s = state(),
     total = Object.values(progress).reduce((a, b) => a + b, 0);
   $("#app").innerHTML =
-    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span><button id="theme" class="circle tonal" aria-label="Prepnúť svetlý a tmavý režim">${theme === "dark" ? "☀" : "☾"}</button></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" open><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="/cv8.pdf" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><span>Obťažnosť</span><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><button id="new" class="border round">↻ Nový príklad</button></div><section class="task-card"><h2>${moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${graphSVG()}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
+    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link stats-link" href="#statistiky" aria-label="Štatistiky">▥</a><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" open><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="/cv8.pdf" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><button id="new" class="border round">↻ Nový príklad</button><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><details class="theory" ${help ? "open" : ""}><summary>Malý ťahák <span>Definície a pravidlá z prezentácie</span></summary><button id="close-theory" class="theory-close" aria-label="Zavrieť ťahák">×</button><p>${theory[moduleId]}</p></details></div><section class="task-card"><h2 ${trainingMode === "testing" && feedback && !feedbackRequested ? 'role="status"' : ""}>${trainingMode === "testing" && feedback && !feedbackRequested ? (feedback.ok ? "✓ Správne." : "↳ Nesprávne.") : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${graphSVG()}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
       ["types", "walk"].includes(moduleId)
         ? `<p class="answer-intro">Môže platiť viac odpovedí súčasne.</p><div class="options">${Object.entries(
             moduleId === "types" ? labels : walkLabels,
@@ -522,15 +596,15 @@ function render() {
               "",
             )}</div>${g.directed && moduleId === "types" ? '<p class="muted">Pri šípkach hodnotíme súvislosť a bipartitnosť po zanedbaní smeru. Kompletné a eulerovské grafy trénujeme na neorientovaných príkladoch.</p>' : ""}`
         : algo() && mode === "steps"
-          ? `<p class="answer-intro">${s.done ? "Hotovo. Prejdená je každá hrana." : s.at === null ? "Začni výberom štartovacieho vrcholu." : moduleId === "hierholzer" && !s.cycle.length ? "Vyber vrchol okruhu s nepoužitou hranou." : `Si vo vrchole ${s.at}. Vyber ďalší vrchol.`}</p><div class="sequence">${s.route.join(" → ") || "Tvoj postup sa začne tu…"}</div>${s.cycle.length ? `<div class="cycle-box"><small>Rozpracovaný cyklus</small><p>${s.cycle.join(" → ")}</p></div>` : ""}<div class="step-progress"><span>Použité hrany</span><b>${s.used.length} / ${g.edges.length}</b></div><progress value="${s.used.length}" max="${g.edges.length}"></progress><div class="step-choices">${g.vertices
+          ? `<p class="answer-intro">${s.done ? "Hotovo. Prejdená je každá hrana." : s.at === null ? "Vyber štartovací vrchol." : moduleId === "hierholzer" && !s.cycle.length ? "Vyber vrchol okruhu s nepoužitou hranou." : `Ďalší vrchol po ${s.at}`}</p><div class="sequence">${s.route.join(" → ") || "Tvoj postup sa začne tu…"}</div>${s.cycle.length ? `<div class="cycle-box"><small>Rozpracovaný cyklus</small><p>${s.cycle.join(" → ")}</p></div>` : ""}<div class="step-progress" aria-label="Použité hrany"><b>${s.used.length} / ${g.edges.length}</b></div><progress value="${s.used.length}" max="${g.edges.length}"></progress><div class="step-choices">${g.vertices
               .map(
                 (v) => `<button class="tonal" data-start="${v}">${v}</button>`,
               )
               .join(
                 "",
-              )}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span>Krok ${cursor}</span><button id="forward" class="border" ${cursor === history.length - 1 ? "disabled" : ""}>Ďalej →</button></div><label class="history-label">Návrat k vypracovanému kroku<select id="history">${history.map((_, i) => `<option value="${i}" ${cursor === i ? "selected" : ""}>Krok ${i}</option>`).join("")}</select></label>`
+              )}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span aria-label="Krok ${cursor}">${cursor}</span><button id="forward" class="border" ${cursor === history.length - 1 ? "disabled" : ""}>Ďalej →</button><button id="hint" class="border round">✦ Nápoveda</button></div><label class="history-label"><select id="history" aria-label="Návrat k vypracovanému kroku">${history.map((_, i) => `<option value="${i}" ${cursor === i ? "selected" : ""}>${i}</option>`).join("")}</select></label>`
           : `<label class="input-label" for="answer">${moduleId === "counts" ? "Výsledný počet" : moduleId === "degree" ? `Stupeň vrcholu ${focusVertex}` : moduleId === "cost" ? "Cena prechádzky" : "Postupnosť vrcholov oddelená medzerou"}</label><input id="answer" class="answer-input" type="text" inputmode="none" autocomplete="off" value="${safe(answer)}" placeholder="${algo() ? "A → B → C…" : "Tvoja odpoveď"}"><div class="keypad">${(algo() ? [...g.vertices, "→", "⌫", "AC", "↵"] : ["1", "2", "3", "⌫", "4", "5", "6", "AC", "7", "8", "9", "✦", "←", "0", "→", "↵"]).map((k) => `<button data-key="${k}" class="${["⌫", "↵"].includes(k) ? "accent-key" : ""}" aria-label="${k === "⌫" ? "Vymazať posledný znak" : k === "AC" ? "Vymazať odpoveď" : k === "↵" ? "Skontrolovať odpoveď" : k === "✦" ? "Nápoveda" : k}">${k}</button>`).join("")}</div>${algo() ? '<p class="muted">Klikanie na vrcholy tiež dopĺňa zápis. Celý výsledok kontroluje hrany; skladanie cyklov precvičíš v krokovom režime.</p>' : ""}`
-    }${feedback ? `<div class="feedback ${feedback.ok ? "positive" : "negative"}" role="status"><button id="dismiss-feedback" class="feedback-dismiss" aria-label="Zavrieť vysvetlenie">×</button><b>${feedback.ok ? "✓" : "↳"} ${feedback.title}</b>${feedback.details.map((d) => `<p>${safe(d)}</p>`).join("")}</div>` : ""}<div class="answer-actions">${!algo() || mode === "whole" ? '<button id="check" class="primary round">Skontrolovať <span>↗</span></button>' : s.done ? '<button id="next" class="primary round">Ďalší príklad ↗</button>' : ""}<button id="hint" class="border round">✦ Nápoveda</button></div>${awarded && !algo() ? '<button id="next" class="transparent next-link">Ďalší príklad →</button>' : ""}</section></div><details class="theory" ${help ? "open" : ""}><summary>◉ Malý ťahák <span>Definície a pravidlá z prezentácie</span></summary><p>${theory[moduleId]}</p></details><footer>Učenie po malých krokoch. <span>ADM / Cvičenie 8 · ${total} vyriešených</span></footer></main></div>`;
+    }${feedback && (trainingMode === "learning" || feedbackRequested) ? `<div class="feedback ${feedback.ok ? "positive" : "negative"}" data-complete="${awarded}" role="status"><button id="dismiss-feedback" class="feedback-dismiss" aria-label="Zavrieť vysvetlenie">×</button><b>${feedback.ok ? "✓" : "↳"} ${feedback.title}</b>${feedback.details.map((d) => `<p>${safe(d)}</p>`).join("")}</div>` : ""}<div class="answer-actions">${!algo() || mode === "whole" ? '<button id="check" class="primary round">Skontrolovať <span>↗</span></button>' : ""}${!algo() || mode === "whole" ? '<button id="hint" class="border round">✦ Nápoveda</button>' : ""}</div></section></div><footer>Učenie po malých krokoch. <span>ADM / Cvičenie 8 · ${total} vyriešených</span></footer></main></div>`;
   bind();
 }
 function bind() {
@@ -552,15 +626,21 @@ function bind() {
     menu = false;
     render();
   });
-  click("#theme", () => {
-    theme = theme === "light" ? "dark" : "light";
-    persist();
-    render();
+  click("#close-theory", () => {
+    $(".theory").open = false;
+    help = false;
+    $(".theory summary").focus();
   });
-  click("#new", fresh);
-  click("#next", fresh);
+  click("#new", nextExercise);
   click("#check", check);
   click("#hint", hint);
+  if (finalized) {
+    document
+      .querySelectorAll("[data-option], #check, #hint, [data-start]")
+      .forEach((button) => {
+        button.disabled = true;
+      });
+  }
   document.querySelectorAll("[data-module]").forEach(
     (el) =>
       (el.onclick = () => {
@@ -619,6 +699,8 @@ function bind() {
     };
   });
   click("#back", () => {
+    clearTimeout(completionTimer);
+    finalized = false;
     cursor--;
     feedback = null;
     render();
@@ -630,6 +712,8 @@ function bind() {
   });
   if ($("#history"))
     $("#history").onchange = (e) => {
+      clearTimeout(completionTimer);
+      finalized = false;
       cursor = Number(e.target.value);
       feedback = null;
       render();
@@ -685,13 +769,39 @@ function bind() {
   }
   $(".theory").ontoggle = (e) => (help = e.target.open);
 }
-fresh();
+nextExercise();
 
-window.addEventListener("hashchange", render);
+window.addEventListener("hashchange", () => {
+  clearTimeout(completionTimer);
+  if (!location.hash && finalized) nextExercise();
+  else render();
+});
 
 function renderSettings() {
   document.body.className = theme;
   const fields = [
+    {
+      title: "Personalizácia cvičení",
+      description:
+        "Zapnutá: ďalšie príklady častejšie vyberajú témy, v ktorých robíš chyby, používaš nápovedu alebo ich nedokončíš. Vychádza z posledných 100 skúšaných príkladov pri zvolenej obťažnosti. Ostatné témy sa tiež opakujú. Vypnutá: pokračuješ v ručne vybratej téme.",
+      key: "personalization",
+      options: [
+        ["off", "Vypnutá"],
+        ["on", "Zapnutá"],
+      ],
+      value: personalization ? "on" : "off",
+    },
+    {
+      title: "Režim tréningu",
+      description:
+        "Učenie zobrazí vysvetlenia po odpovedi. Testovanie ich vypne; ručne vyžiadaná nápoveda zostáva dostupná.",
+      key: "trainingMode",
+      options: [
+        ["learning", "Učenie"],
+        ["testing", "Testovanie"],
+      ],
+      value: trainingMode,
+    },
     {
       title: "Vzhľad",
       description:
@@ -718,12 +828,69 @@ function renderSettings() {
     },
   ];
   $("#app").innerHTML =
-    `<header class="topbar"><a href="#" class="settings-back">← Späť na tréning</a><span class="brand">ADM</span></header><main class="settings-page"><h1>Nastavenia</h1><p>Prispôsob si tréning. Zmeny sa ukladajú automaticky.</p>${fields.map((field) => `<section class="settings-card"><h2>${field.title}</h2><p>${field.description}</p><div class="settings-options">${field.options.map(([value, label]) => `<button data-setting="${field.key}" data-value="${value}" aria-pressed="${field.value === value}" class="${field.value === value ? "primary" : "border"}">${label}</button>`).join("")}</div></section>`).join("")}<section class="settings-card"><h2>Spôsob skúšania</h2><p>V algoritmoch zadávaš iba vrcholy. Na každej obťažnosti máš na výber všetky vrcholy; nesprávny krok sa vysvetlí až po zadaní. Nápoveda sa zobrazí iba po stlačení tlačidla.</p></section><section class="settings-card"><h2>Ukladanie</h2><p>Pokrok a nastavenia zostávajú v tomto prehliadači, bez účtu a bez odosielania na server.</p></section></main>`;
+    `<header class="topbar"><a href="#" class="settings-back">← Späť na tréning</a><span class="brand">ADM</span></header><main class="settings-page"><h1>Nastavenia</h1><p>Prispôsob si tréning. Zmeny sa ukladajú automaticky.</p>${fields.map((field) => `<section class="settings-card"><h2>${field.title}</h2><p>${field.description}</p><div class="settings-options">${field.options.map(([value, label]) => `<button data-setting="${field.key}" data-value="${value}" aria-pressed="${field.value === value}" class="${field.value === value ? "primary" : "border"}">${label}</button>`).join("")}</div></section>`).join("")}<section class="settings-card"><h2>Spôsob skúšania</h2><p>V algoritmoch zadávaš iba vrcholy. Na každej obťažnosti máš na výber všetky vrcholy; nesprávny krok sa vysvetlí až po zadaní. Nápoveda sa zobrazí iba po stlačení tlačidla.</p></section><section class="settings-card"><h2>Tréningové dáta</h2><p>História a pokrok zostávajú v tomto prehliadači. Export uloží zálohu JSON. Import nahradí históriu aj počty vyriešených príkladov údajmi zo súboru; vzhľad a obťažnosť zostanú zachované.</p><div class="settings-options"><button id="export-data" class="border">Exportovať dáta</button><button id="import-data" class="border">Importovať dáta</button><input id="import-file" type="file" accept="application/json,.json" hidden></div><p id="data-status" role="status"></p></section></main>`;
+  $("#export-data").onclick = () => {
+    const blob = new Blob(
+      [JSON.stringify({ version: 1, attempts, progress }, null, 2)],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download =
+      "adm-trening-" + new Date().toISOString().slice(0, 10) + ".json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $("#data-status").textContent = "Záloha je pripravená na stiahnutie.";
+  };
+  $("#import-data").onclick = () => $("#import-file").click();
+  $("#import-file").onchange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      if (file.size > 2_000_000)
+        throw new Error("Súbor je príliš veľký (maximum 2 MB).");
+      const backup = validateBackup(
+        JSON.parse(await file.text()),
+        modules.map((m) => m.id),
+      );
+      localStorage.setItem(
+        "adm-v1",
+        JSON.stringify({
+          level,
+          theme,
+          trainingMode,
+          personalization,
+          ...backup,
+        }),
+      );
+      attempts = backup.attempts;
+      progress = backup.progress;
+      activeAttempt = null;
+      $("#data-status").textContent =
+        "Importované: " +
+        attempts.length +
+        " príkladov. História a pokrok boli nahradené.";
+    } catch (error) {
+      $("#data-status").textContent =
+        "Import sa nepodaril. " +
+        (error instanceof SyntaxError
+          ? "Súbor nie je platný JSON."
+          : error.message);
+    }
+    event.target.value = "";
+  };
   document.querySelectorAll("[data-setting]").forEach(
     (button) =>
       (button.onclick = () => {
         if (button.dataset.setting === "theme") theme = button.dataset.value;
-        else {
+        else if (button.dataset.setting === "personalization") {
+          personalization = button.dataset.value === "on";
+        } else if (button.dataset.setting === "trainingMode") {
+          trainingMode = button.dataset.value;
+          feedback = null;
+          feedbackRequested = false;
+        } else {
           level = button.dataset.value;
           g = randomGraph(level, moduleId);
           history = [initialAlgorithm(g)];
@@ -732,6 +899,8 @@ function renderSettings() {
           answer = "";
           feedback = null;
           awarded = false;
+          activeAttempt = null;
+          finalized = false;
           focusVertex = g.vertices[0];
           if (["walk", "cost"].includes(moduleId)) {
             while (!g.edges.length) g = randomGraph(level, moduleId);
@@ -742,4 +911,59 @@ function renderSettings() {
         renderSettings();
       }),
   );
+}
+
+function renderStats() {
+  document.body.className = theme;
+  const recent = attempts.slice(-statsLimit);
+  const summary = summarize(recent);
+  const percent = (n, total) => (total ? Math.round((100 * n) / total) : 0);
+  const levels = { easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" };
+  const rows = modules
+    .map((m) => {
+      const values = summarize(recent.filter((a) => a.moduleId === m.id));
+      const rate = percent(values.independent, values.total);
+      const layers = Object.entries(levels).map(([id, title]) => {
+        const group = summarize(
+          recent.filter((a) => a.moduleId === m.id && a.level === id),
+        );
+        return {
+          id,
+          title,
+          total: group.total,
+          rate: percent(group.independent, group.total),
+        };
+      });
+      const description = layers
+        .map(
+          (l) =>
+            `${l.title}: ${l.total ? `${l.rate} % z ${l.total} príkladov` : "bez údajov"}`,
+        )
+        .join("; ");
+      return `<div class="stats-row"><div class="stats-row-heading"><b>${m.title}</b><span>${values.total ? `${rate} % spolu` : "Zatiaľ bez údajov"}</span></div><div class="stats-bar stats-bar-layered" role="img" aria-label="${m.title}. ${description}">${layers.map((l, i) => `<span class="stats-level-${l.id}" data-stat-level="${l.id}" style="width:${l.rate}%;z-index:${i + 1}"></span>`).join("")}</div><div class="stats-level-list">${layers.map((l) => `<span class="stats-level-label stats-level-${l.id}" title="${l.title}: ${l.total} príkladov">${l.title} ${l.total ? `${l.rate} %` : "—"}</span>`).join("")}</div><small>${values.total} príkladov · ${values.errors} chýb · ${values.hints} nápovied</small></div>`;
+    })
+    .join("");
+  const difficulty = Object.entries(levels)
+    .map(([id, title]) => {
+      const values = summarize(recent.filter((a) => a.level === id));
+      const maxErrors = Math.max(
+        1,
+        ...Object.keys(levels).map(
+          (l) => summarize(recent.filter((a) => a.level === l)).errors,
+        ),
+      );
+      return `<div class="stats-row"><div class="stats-row-heading"><b>${title}</b><span>${values.errors} chýb / ${values.total} príkladov</span></div><div class="stats-bar errors" role="img" aria-label="${title}: ${values.errors} chýb v ${values.total} príkladoch"><span style="width:${(100 * values.errors) / maxErrors}%"></span></div></div>`;
+    })
+    .join("");
+  $("#app").innerHTML =
+    `<header class="topbar"><a href="#" class="settings-back">← Späť na tréning</a><a href="#nastavenia" class="settings-back">Nastavenia</a></header><main class="settings-page stats-page"><h1>Čo už vieš</h1><p>Prehľad posledných skúšaných príkladov. Samostatne znamená vyriešené bez chyby a bez nápovedy.</p><label class="stats-filter">Posledných <input id="stats-limit" type="number" min="1" max="2000" step="1" value="${statsLimit}"> príkladov</label><p>Zobrazených ${summary.total} z ${attempts.length} uložených príkladov.</p>${!summary.total ? '<section class="settings-card"><h2>Začni tréningom</h2><p>Po prvej odpovedi, kroku alebo nápovede sa tu objaví tvoj prehľad. Staršie počty vyriešených úloh neobsahujú údaje o chybách.</p><a href="#" class="settings-back">Prejsť na tréning →</a></section>' : `<div class="stats-totals"><section class="settings-card"><b>${percent(summary.independent, summary.total)} %</b><span>samostatne</span></section><section class="settings-card"><b>${summary.solved} / ${summary.total}</b><span>vyriešených</span></section><section class="settings-card"><b>${summary.errors}</b><span>chýb</span></section></div><section class="settings-card"><h2>Čo ti ide a čo precvičiť</h2><p>Úspešnosť v každej obťažnosti má vlastnú vrstvu v jednom pruhu. Ťažšia obťažnosť prekrýva ľahšiu. Malý počet príkladov ešte nemusí vystihovať tvoje vedomosti.</p>${rows}</section><section class="settings-card"><h2>Chyby podľa obťažnosti</h2><p>Každá nesprávna odpoveď alebo neplatný krok je jedna chyba. Jeden príklad môže mať viac chýb.</p>${difficulty}</section>`}<p>Počítajú sa aj rozpracované a opustené príklady, pri ktorých si už odpovedal alebo použil nápovedu. Ukladá sa posledných 2 000 príkladov iba v tomto prehliadači.</p></main>`;
+  $("#stats-limit").onchange = (event) => {
+    const value = Number(event.target.value);
+    if (!Number.isInteger(value) || value < 1 || value > 2000) {
+      event.target.value = statsLimit;
+      return;
+    }
+    statsLimit = value;
+    renderStats();
+  };
 }

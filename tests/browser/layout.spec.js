@@ -20,7 +20,7 @@ for (const [width, height] of [
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       ).toBeTruthy();
-      const box = await page.locator(".answer-actions").boundingBox();
+      const box = await page.locator("#hint").boundingBox();
       expect(box.y + box.height).toBeLessThanOrEqual(height + 1);
     }
     async function choose(id) {
@@ -40,15 +40,21 @@ for (const [width, height] of [
       await page.locator('[data-level="fiit"]').click();
       await fit();
       if (id === "hierholzer") {
-        for (let i = 0; i < 20 && !(await page.locator("#next").count()); i++) {
+        for (
+          let i = 0;
+          i < 20 &&
+          !(await page.locator('.feedback[data-complete="true"]').count());
+          i++
+        ) {
           await page.locator("#hint").click();
           await fit();
           await expect(page.locator("[data-start]")).toHaveCount(9);
-          await expect(page.locator("[data-start]:disabled")).toHaveCount(0);
+          if (!(await page.locator('.feedback[data-complete="true"]').count()))
+            await expect(page.locator("[data-start]:disabled")).toHaveCount(0);
         }
       }
     }
-    await page.locator(".settings-link").click();
+    await page.locator('.settings-link[href="#nastavenia"]').click();
     await expect(page.locator("h1")).toHaveText("Nastavenia");
     await page.locator('[data-setting="theme"][data-value="light"]').click();
     await expect(page.locator("body")).toHaveClass("light");
@@ -71,7 +77,7 @@ test("všetky vrcholy na každej obťažnosti a chyba až po odpovedi", async ({
       await page.locator('[data-start="A"]').click();
       await page.locator('[data-start="A"]').click();
       await expect(page.locator(".feedback.negative")).toBeVisible();
-      await expect(page.locator(".history-controls")).toContainText("Krok 1");
+      await expect(page.locator(".history-controls > span")).toHaveText("1");
       await expect(page.locator("[data-start]:disabled")).toHaveCount(0);
       await expect(page.locator("[data-step]")).toHaveCount(0);
       let advanced = false;
@@ -81,9 +87,7 @@ test("všetky vrcholy na každej obťažnosti a chyba až po odpovedi", async ({
       )) {
         await page.locator(`[data-start="${vertex}"]`).click();
         if (
-          (await page.locator(".history-controls").innerText()).includes(
-            "Krok 2",
-          )
+          (await page.locator(".history-controls > span").innerText()) === "2"
         ) {
           advanced = true;
           break;

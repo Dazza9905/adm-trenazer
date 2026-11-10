@@ -28,9 +28,14 @@ for (const width of [320, 390, 1440])
     await page.locator("#check").click();
     await expect(page.locator(".feedback")).toBeVisible();
     await choose("fleury");
-    for (let i = 0; i < 30 && !(await page.locator("#next").count()); i++)
+    for (
+      let i = 0;
+      i < 30 &&
+      !(await page.locator('.feedback[data-complete="true"]').count());
+      i++
+    )
       await page.locator("#hint").click();
-    await expect(page.locator("#next")).toBeVisible();
+    await expect(page.locator('.feedback[data-complete="true"]')).toBeVisible();
     const route = await page.locator(".sequence").innerText();
     if (await page.locator("#dismiss-feedback").isVisible())
       await page.locator("#dismiss-feedback").click();
@@ -39,9 +44,14 @@ for (const width of [320, 390, 1440])
     await page.locator("#forward").click();
     await expect(page.locator(".sequence")).toHaveText(route);
     await choose("hierholzer");
-    for (let i = 0; i < 35 && !(await page.locator("#next").count()); i++)
+    for (
+      let i = 0;
+      i < 35 &&
+      !(await page.locator('.feedback[data-complete="true"]').count());
+      i++
+    )
       await page.locator("#hint").click();
-    await expect(page.locator("#next")).toBeVisible();
+    await expect(page.locator('.feedback[data-complete="true"]')).toBeVisible();
     if (await page.locator("#dismiss-feedback").isVisible())
       await page.locator("#dismiss-feedback").click();
     await page.locator('[data-mode="whole"]').click();
@@ -56,7 +66,9 @@ for (const width of [320, 390, 1440])
     await page.locator("#check").click();
     await expect(page.locator(".feedback")).toBeVisible();
     await page.locator('[data-level="fiit"]').click();
-    await page.locator("#theme").click();
+    await page.locator('.settings-link[href="#nastavenia"]').click();
+    await page.locator('[data-setting="theme"][data-value="light"]').click();
+    await page.locator(".settings-back").click();
     await page.reload();
     await expect(page.locator("body")).toHaveClass("light");
     await expect(page.locator('[data-level="fiit"]')).toHaveAttribute(

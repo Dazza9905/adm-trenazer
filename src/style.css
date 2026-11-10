@@ -611,12 +611,12 @@ h2 {
   color: var(--ink);
 }
 .theory {
-  margin-top: 22px;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 18px 22px;
+  padding: 6px 10px;
   background: var(--panel);
-  font-size: 12px;
+  font-size: 15px;
 }
 .theory summary {
   cursor: pointer;
@@ -624,14 +624,12 @@ h2 {
   font-weight: 700;
 }
 .theory summary span {
-  margin-left: 12px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
+  display: none;
 }
 .theory p {
-  line-height: 1.9;
-  margin: 15px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 8px 0 0;
 }
 footer {
   display: flex;
@@ -1142,6 +1140,73 @@ progress {
   .toolbar {
     flex-wrap: wrap;
   }
+}
+
+.stats-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+}
+.stats-filter input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+.stats-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.stats-totals .settings-card {
+  padding: 12px 8px;
+  text-align: center;
+  min-width: 0;
+}
+.stats-totals b,
+.stats-totals span {
+  display: block;
+}
+.stats-totals b {
+  font-size: 24px;
+  color: var(--accent);
+}
+.stats-totals span {
+  font-size: 12px;
+}
+.stats-row {
+  margin-top: 18px;
+}
+.stats-row-heading {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+.stats-row small,
+.stats-row-heading span {
+  color: var(--muted);
+}
+.stats-bar {
+  height: 10px;
+  background: var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 7px 0;
+}
+.stats-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+.stats-bar.errors > span {
+  background: var(--error, #c85b52);
 }
 
 /* Phone workspace: keep the task, graph and controls in one viewport. */
@@ -2101,4 +2166,214 @@ progress {
   .cycle-box small {
     font-size: 11px;
   }
+}
+
+.toolbar {
+  justify-content: flex-start;
+}
+#app .toolbar > .theory {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.toolbar > .theory summary {
+  white-space: nowrap;
+}
+#app .toolbar > .theory p {
+  font-size: 16px;
+}
+@media (max-width: 600px) {
+  .toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+}
+
+/* Keep frequent vertex choices larger than secondary controls. */
+#app .step-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+  gap: 6px;
+}
+#app .step-choices button {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  height: auto;
+  padding: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  border-radius: 14px;
+}
+.step-progress {
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  #app .layout > main {
+    position: relative;
+  }
+  #app .step-choices {
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    gap: 4px;
+  }
+  #app .step-choices button {
+    min-height: 44px;
+    font-size: 20px;
+  }
+}
+
+.theory-close {
+  display: none;
+}
+#app .theory[open] {
+  padding-right: 48px;
+}
+#app .theory[open] .theory-close {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.answer-card .sequence,
+.cycle-box p {
+  white-space: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .answer-card .sequence {
+    font-size: 14px;
+  }
+}
+
+#app:has(> .settings-page) {
+  display: block;
+  height: auto;
+  min-height: 100dvh;
+}
+#app .theory[open] .theory-close {
+  z-index: 1;
+}
+@media (max-width: 600px) {
+  #app .workspace > .answer-card {
+    padding: 8px;
+  }
+}
+
+.page-heading > #new {
+  margin: 0 0 0 auto;
+  min-height: 36px;
+  height: auto;
+  padding: 4px 10px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .page-heading > #new {
+    min-height: 28px;
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+  #app .layout > main {
+    gap: 4px;
+  }
+}
+
+#app .theory::details-content {
+  transform: none;
+  transition: none;
+}
+#app .theory > summary {
+  min-block-size: 24px;
+  padding: 0;
+}
+
+.answer-actions:empty {
+  display: none;
+}
+
+#app .feedback {
+  font-size: 18px;
+  line-height: 1.6;
+  padding: 14px 48px 14px 16px;
+}
+#app .feedback > b {
+  font-size: 20px;
+}
+#app .feedback p {
+  font-size: 18px;
+  line-height: 1.6;
+  margin: 8px 0;
+}
+#app .feedback-dismiss {
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  font-size: 28px;
+}
+#app .answer-card > .answer-intro {
+  margin-top: 0;
+}
+@media (max-width: 600px) and (max-height: 700px) {
+  .keypad {
+    margin-top: 2px;
+  }
+  .answer-actions {
+    padding-top: 4px;
+  }
+}
+
+.stats-level-easy {
+  --level-color: #438ae9;
+}
+.stats-level-medium {
+  --level-color: #34b879;
+}
+.stats-level-hard {
+  --level-color: #edc43c;
+}
+.stats-level-fiit {
+  --level-color: #eb5959;
+}
+.stats-bar-layered {
+  position: relative;
+  height: 12px;
+}
+.stats-bar-layered > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  margin: 0;
+  background: var(--level-color);
+}
+.stats-level-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
+.stats-level-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.stats-level-label::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--level-color);
 }
