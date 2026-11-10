@@ -23,3 +23,5 @@ Vlastnosti sa vyberajú všetky súčasne. Pri orientovaných grafoch sa Eulerov
 Závislosti sú lokálne balené cez npm. Fonty z Google Fonts sú voliteľné; pri nedostupnosti sa použije systémový font. Pre verejný prístup sa očakáva reverzný proxy Pangolin; samotný proces nemá prihlasovanie.
 
 Pre beh na pozadí: `devenv up -d`. Zastavenie: `devenv down`. Po zmene aplikácie proces reštartuj, aby `adm-serve` zostavil aktuálny balík. Kontrola rozhrania na desktope a mobiloch: `npm run test:ui` (pri spustenom serveri; Chromium je deklarované v devenv). Preview server prijíma názov domény od reverzného proxy, stále počúva iba na loopbacku.
+
+Rozhranie tréningu používa výšku obrazovky na mobile aj desktope; menu má vlastné posúvanie. Rozsiahle vysvetlenia a ťahák sa zobrazujú v samostatnej vrstve. Nastavenia sú na `/#nastavenia` (téma a obťažnosť), predvolený vzhľad je tmavý. Algoritmy na každej obťažnosti ponúkajú **všetky vrcholy**, bez filtrovania možností alebo deaktivovania nesprávnych odpovedí. Pri násobných hranách sa vyberie jedna nepoužitá hrana medzi zadanými vrcholmi. Chyba sa vyhodnotí až po zadaní kroku; nápoveda je dobrovoľná.

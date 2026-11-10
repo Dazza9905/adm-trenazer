@@ -32,6 +32,8 @@ for (const width of [320, 390, 1440])
       await page.locator("#hint").click();
     await expect(page.locator("#next")).toBeVisible();
     const route = await page.locator(".sequence").innerText();
+    if (await page.locator("#dismiss-feedback").isVisible())
+      await page.locator("#dismiss-feedback").click();
     await page.locator("#back").click();
     await expect(page.locator("#forward")).toBeEnabled();
     await page.locator("#forward").click();
@@ -40,6 +42,8 @@ for (const width of [320, 390, 1440])
     for (let i = 0; i < 35 && !(await page.locator("#next").count()); i++)
       await page.locator("#hint").click();
     await expect(page.locator("#next")).toBeVisible();
+    if (await page.locator("#dismiss-feedback").isVisible())
+      await page.locator("#dismiss-feedback").click();
     await page.locator('[data-mode="whole"]').click();
     await page.locator("#new").click();
     for (let i = 0; i < 15; i++) await page.locator("#hint").click();
@@ -54,7 +58,7 @@ for (const width of [320, 390, 1440])
     await page.locator('[data-level="fiit"]').click();
     await page.locator("#theme").click();
     await page.reload();
-    await expect(page.locator("body")).toHaveClass("dark");
+    await expect(page.locator("body")).toHaveClass("light");
     await expect(page.locator('[data-level="fiit"]')).toHaveAttribute(
       "aria-pressed",
       "true",
