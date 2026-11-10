@@ -1,3 +1,4 @@
+import { cv9Modules, cv9Theory } from "./cv9.js";
 export const presentations = [
   {
     id: "cv8",
@@ -58,6 +59,13 @@ export const presentations = [
     ],
   },
 ];
+presentations.push({
+  id: "cv9",
+  title: "Cvičenie 9",
+  subtitle: "Eulerizácia, Hamilton a TSP",
+  source: "/Cv09_Blazek_prezentacia.pdf",
+  modules: cv9Modules,
+});
 export const labels = {
   connected: "Súvislý (spojitý)",
   simple: "Jednoduchý",
@@ -90,3 +98,5 @@ export const theory = {
   hierholzer:
     "Podľa prezentácie pracujeme s eulerovským grafom. Po nepoužitých hranách vytvor uzavretý cyklus. Ak ostali hrany, vyber vrchol už hotového okruhu s nepoužitou hranou. Vytvor odtiaľ ďalší cyklus a vlož ho do okruhu. Opakuj až do použitia všetkých hrán.",
 };
+
+Object.assign(theory, cv9Theory);

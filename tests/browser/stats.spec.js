@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { presentations } from "../../src/content.js";
 
 test("štatistiky ukladajú chyby, nápovedu a počítajú posledné príklady", async ({
   page,
@@ -49,7 +50,9 @@ test("štatistiky ukladajú chyby, nápovedu a počítajú posledné príklady",
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBeTruthy();
-    await expect(page.locator(".stats-bar")).toHaveCount(11);
+    await expect(page.locator(".stats-bar")).toHaveCount(
+      presentations.flatMap((p) => p.modules).length + 4,
+    );
   }
 });
 
@@ -132,8 +135,10 @@ test("vlastnosti: vyhodnotená voľba je konečná aj pri chybe", async ({
   page,
 }) => {
   await page.goto("/");
-  for (const button of await page.locator("[data-option]").all())
-    await button.click();
+  // Contradict the graph direction so the answer is wrong for every seed.
+  const notation = await page.locator(".notation p").nth(1).textContent();
+  if (!notation.includes("→"))
+    await page.locator('[data-option="directed"]').click();
   await page.locator("#check").click();
   await expect(page.locator(".feedback.negative")).toBeVisible();
   await expect(page.locator("#check")).toBeDisabled();
