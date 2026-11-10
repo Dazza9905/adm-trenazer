@@ -1,0 +1,22 @@
+{
+  "name": "adm-trenazer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "node --test tests/*.test.js",
+    "test:ui": "playwright test",
+    "format": "prettier --write src tests *.json *.html *.md"
+  },
+  "dependencies": {
+    "beercss": "^5.0.3",
+    "material-dynamic-colors": "^1.1.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "prettier": "^3.9.10",
+    "vite": "^7.2.2"
+  }
+}
