@@ -4,3 +4,9 @@ dist/
 .direnv/
 test-results/
 playwright-report/
+
+# Presentation materials are local only, not part of the source repository.
+/cv8.pdf
+/Cv09_Blazek_prezentacia.pdf
+/public/cv8.pdf
+/public/Cv09_Blazek_prezentacia.pdf

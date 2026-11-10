@@ -16,6 +16,8 @@ Alternatívne `devenv up` spustí deklarovaný proces `adm`. Vývoj: `npm run de
 
 ## Obsah a rozšírenie
 
+Zdrojové prezentácie nie sú súčasťou repozitára. Pre lokálny hosting vlož `cv8.pdf` a `Cv09_Blazek_prezentacia.pdf` do koreňa projektu a vytvor na ne odkazy v `public/`. Tieto súbory a odkazy Git ignoruje.
+
 `src/content.js` obsahuje register prezentácií a modulov, zadania, vysvetlenia pravidiel. `src/graph.js` obsahuje generátor, matematické kontroly a čistý stavový model algoritmov. `src/main.js` obsluhuje rozhranie a konkrétne vysvetlenia. Novú prezentáciu pridaj do projektu, následne doplň jej moduly a kontrolné funkcie. Automatické spracovanie nahraných PDF nie je súčasťou aplikácie.
 
 Vlastnosti sa vyberajú všetky súčasne. Pri orientovaných grafoch sa Eulerove vlastnosti neponúkajú (prezentácia ich definuje pre neorientované grafy). Okruh rešpektuje definíciu prezentácie: uzavretý ťah, vrcholy sa môžu opakovať. Hierholzerov tréning používa eulerovské grafy a vkladanie cyklov; Fleury aj semi-eulerovské. Celý výsledok overuje platnosť výsledného ťahu, pri Fleuryho algoritme navyše pravidlo mostov. Vkladanie cyklov sa kontroluje v krokovom režime. Návrat ku kroku a nová voľba nahradí neskoršiu vetvu histórie. Nápoveda je dostupná na každej obťažnosti.
