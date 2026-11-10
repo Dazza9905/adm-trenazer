@@ -1,3 +1,20 @@
+import {
+  isCv9,
+  step9,
+  make9,
+  initial9,
+  action9,
+  hint9,
+  withCopies,
+  finishEuler,
+  conditionAnswers,
+  conditionLabels,
+  hamiltonPaths,
+  tourCost,
+  cutVertices,
+  weight,
+} from "./cv9.js";
+import { view9, matrix9 } from "./cv9-view.js";
 import "beercss";
 import "./style.css";
 import { presentations, labels, walkLabels, theory } from "./content.js";
@@ -43,6 +60,9 @@ let level = ["easy", "medium", "hard", "fiit"].includes(saved.level)
   sequence = [],
   focusVertex = "",
   countVariant = 0,
+  q9 = null,
+  draft9 = [],
+  matrixMode = true,
   g,
   history = [],
   cursor = 0,
@@ -50,7 +70,9 @@ let level = ["easy", "medium", "hard", "fiit"].includes(saved.level)
   help = false;
 let progress = saved.progress || {},
   streak = 0;
-const modules = presentations[0].modules;
+const modules = presentations.flatMap((p) => p.modules);
+const presentation = () =>
+  presentations.find((p) => p.modules.some((m) => m.id === moduleId));
 const module = () => modules.find((m) => m.id === moduleId);
 const algo = () => ["fleury", "hierholzer"].includes(moduleId);
 const state = () => history[cursor];
@@ -121,6 +143,19 @@ function countTask() {
   return tasks[countVariant];
 }
 function fresh() {
+  if (isCv9(moduleId)) {
+    q9 = make9(moduleId, level);
+    g = q9.g;
+    draft9 = [];
+    selected = [];
+    answer = "";
+    feedback = null;
+    awarded = false;
+    history = [initial9()];
+    cursor = 0;
+    render();
+    return;
+  }
   countVariant = Math.floor(Math.random() * 4);
   g = randomGraph(level, moduleId);
   if (["walk", "cost"].includes(moduleId)) {
@@ -223,6 +258,10 @@ function explain(key) {
   }
 }
 function check() {
+  if (isCv9(moduleId)) {
+    check9();
+    return;
+  }
   let details = [],
     correct = true;
   if (moduleId === "types" || moduleId === "walk") {
@@ -394,6 +433,10 @@ function perform(action, hint = false) {
   render();
 }
 function hint() {
+  if (isCv9(moduleId)) {
+    help9();
+    return;
+  }
   if (algo() && mode === "steps") {
     if (!state().done) perform(hintAction(g, state(), moduleId), true);
     return;
@@ -482,7 +525,9 @@ function graphSVG() {
       e.a === e.b
         ? `M ${a.x - 12} ${a.y - 16} C ${a.x - 80} ${a.y - 85} ${a.x + 80} ${a.y - 85} ${a.x + 12} ${a.y - 16}`
         : `M ${a.x + dx * 24} ${a.y + dy * 24} Q ${mx} ${my} ${b.x - dx * 27} ${b.y - dy * 27}`;
-    const used = algo() && mode === "steps" && s.used.includes(e.id);
+    const used =
+      ((algo() && mode === "steps") || isCv9(moduleId)) &&
+      s.used.includes(e.id);
     out += `<g class="edge ${used ? "used" : ""}"><path class="edge-hit" d="${d}"/><path class="edge-line" d="${d}" ${g.directed ? 'marker-end="url(#arrow)"' : ""}/>${g.weighted ? `<circle cx="${e.a === e.b ? a.x : mx}" cy="${e.a === e.b ? a.y - 60 : my}" r="14" class="weight-bg"/><text x="${e.a === e.b ? a.x : mx}" y="${(e.a === e.b ? a.y - 60 : my) + 5}" class="weight">${e.weight}</text>` : ""}</g>`;
   }
   for (const v of g.vertices) {
@@ -499,41 +544,59 @@ function render() {
     renderSettings();
     return;
   }
+  if (isCv9(moduleId))
+    g = ["eulerize", "semi9"].includes(moduleId)
+      ? withCopies(q9, state())
+      : q9.g;
   document.body.className = theme;
   const m = module(),
     s = state(),
     total = Object.values(progress).reduce((a, b) => a + b, 0);
   $("#app").innerHTML =
-    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span><button id="theme" class="circle tonal" aria-label="Prepnúť svetlý a tmavý režim">${theme === "dark" ? "☀" : "☾"}</button></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" open><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="/cv8.pdf" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><span>Obťažnosť</span><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><button id="new" class="border round">↻ Nový príklad</button></div><section class="task-card"><h2>${moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace ${algo() && mode === "steps" ? "algorithm-steps" : ""}"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${graphSVG()}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
-      ["types", "walk"].includes(moduleId)
-        ? `<p class="answer-intro">Môže platiť viac odpovedí súčasne.</p><div class="options">${Object.entries(
-            moduleId === "types" ? labels : walkLabels,
-          )
-            .filter(
-              ([k]) =>
-                !g.directed ||
-                !["euler", "semi", "complete", "completeBipartite"].includes(k),
+    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span><button id="theme" class="circle tonal" aria-label="Prepnúť svetlý a tmavý režim">${theme === "dark" ? "☀" : "☾"}</button></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" open><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="${presentation().source}" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><span>Obťažnosť</span><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><button id="new" class="border round">↻ Nový príklad</button></div><section class="task-card"><h2>${isCv9(moduleId) ? prompt9() : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace ${algo() && mode === "steps" ? "algorithm-steps" : ""}"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${isCv9(moduleId) && g.weighted && matrixMode ? matrix9(g) : graphSVG()}${isCv9(moduleId) && g.weighted ? `<button id="v9-matrix" class="matrix-toggle border">${matrixMode ? "Zobraziť graf" : "Matica váh"}</button>` : ""}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
+      isCv9(moduleId) && !["complete9", "tsp9"].includes(moduleId)
+        ? view9(q9, s, {
+            draft: draft9,
+            answer,
+            selected,
+            cursor,
+            length: history.length,
+          })
+        : ["types", "walk"].includes(moduleId)
+          ? `<p class="answer-intro">Môže platiť viac odpovedí súčasne.</p><div class="options">${Object.entries(
+              moduleId === "types" ? labels : walkLabels,
             )
-            .map(
-              ([k, v], i) =>
-                `<button class="option ${selected.includes(k) ? "selected" : ""}" data-option="${k}" aria-pressed="${selected.includes(k)}"><span class="option-letter">${String.fromCharCode(65 + i)}</span><span>${v}</span><span class="checkbox">${selected.includes(k) ? "✓" : ""}</span></button>`,
-            )
-            .join(
-              "",
-            )}</div>${g.directed && moduleId === "types" ? '<p class="muted">Pri šípkach hodnotíme súvislosť a bipartitnosť po zanedbaní smeru. Kompletné a eulerovské grafy trénujeme na neorientovaných príkladoch.</p>' : ""}`
-        : algo() && mode === "steps"
-          ? `<p class="answer-intro">${s.done ? "Hotovo. Prejdená je každá hrana." : s.at === null ? "Začni výberom štartovacieho vrcholu." : moduleId === "hierholzer" && !s.cycle.length ? "Vyber vrchol okruhu s nepoužitou hranou." : `Si vo vrchole ${s.at}. Vyber ďalší vrchol.`}</p><div class="sequence">${s.route.join(" → ") || "Tvoj postup sa začne tu…"}</div>${s.cycle.length ? `<div class="cycle-box"><small>Rozpracovaný cyklus</small><p>${s.cycle.join(" → ")}</p></div>` : ""}<div class="step-progress"><span>Použité hrany</span><b>${s.used.length} / ${g.edges.length}</b></div><progress value="${s.used.length}" max="${g.edges.length}"></progress><div class="step-choices" style="--vertex-columns: ${Math.ceil(g.vertices.length / 2)}">${g.vertices
+              .filter(
+                ([k]) =>
+                  !g.directed ||
+                  !["euler", "semi", "complete", "completeBipartite"].includes(
+                    k,
+                  ),
+              )
               .map(
-                (v) => `<button class="tonal" data-start="${v}">${v}</button>`,
+                ([k, v], i) =>
+                  `<button class="option ${selected.includes(k) ? "selected" : ""}" data-option="${k}" aria-pressed="${selected.includes(k)}"><span class="option-letter">${String.fromCharCode(65 + i)}</span><span>${v}</span><span class="checkbox">${selected.includes(k) ? "✓" : ""}</span></button>`,
               )
               .join(
                 "",
-              )}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span>Krok ${cursor}</span><button id="forward" class="border" ${cursor === history.length - 1 ? "disabled" : ""}>Ďalej →</button></div><label class="history-label">Návrat k vypracovanému kroku<select id="history">${history.map((_, i) => `<option value="${i}" ${cursor === i ? "selected" : ""}>Krok ${i}</option>`).join("")}</select></label>`
-          : `<label class="input-label" for="answer">${moduleId === "counts" ? "Výsledný počet" : moduleId === "degree" ? `Stupeň vrcholu ${focusVertex}` : moduleId === "cost" ? "Cena prechádzky" : "Postupnosť vrcholov oddelená medzerou"}</label><input id="answer" class="answer-input" type="text" inputmode="none" autocomplete="off" value="${safe(answer)}" placeholder="${algo() ? "A → B → C…" : "Tvoja odpoveď"}"><div class="keypad">${(algo() ? [...g.vertices, "→", "⌫", "AC", "↵"] : ["1", "2", "3", "⌫", "4", "5", "6", "AC", "7", "8", "9", "✦", "←", "0", "→", "↵"]).map((k) => `<button data-key="${k}" class="${["⌫", "↵"].includes(k) ? "accent-key" : ""}" aria-label="${k === "⌫" ? "Vymazať posledný znak" : k === "AC" ? "Vymazať odpoveď" : k === "↵" ? "Skontrolovať odpoveď" : k === "✦" ? "Nápoveda" : k}">${k}</button>`).join("")}</div>${algo() ? '<p class="muted">Klikanie na vrcholy tiež dopĺňa zápis. Celý výsledok kontroluje hrany; skladanie cyklov precvičíš v krokovom režime.</p>' : ""}`
+              )}</div>${g.directed && moduleId === "types" ? '<p class="muted">Pri šípkach hodnotíme súvislosť a bipartitnosť po zanedbaní smeru. Kompletné a eulerovské grafy trénujeme na neorientovaných príkladoch.</p>' : ""}`
+          : algo() && mode === "steps"
+            ? `<p class="answer-intro">${s.done ? "Hotovo. Prejdená je každá hrana." : s.at === null ? "Začni výberom štartovacieho vrcholu." : moduleId === "hierholzer" && !s.cycle.length ? "Vyber vrchol okruhu s nepoužitou hranou." : `Si vo vrchole ${s.at}. Vyber ďalší vrchol.`}</p><div class="sequence">${s.route.join(" → ") || "Tvoj postup sa začne tu…"}</div>${s.cycle.length ? `<div class="cycle-box"><small>Rozpracovaný cyklus</small><p>${s.cycle.join(" → ")}</p></div>` : ""}<div class="step-progress"><span>Použité hrany</span><b>${s.used.length} / ${g.edges.length}</b></div><progress value="${s.used.length}" max="${g.edges.length}"></progress><div class="step-choices" style="--vertex-columns: ${Math.ceil(g.vertices.length / 2)}">${g.vertices
+                .map(
+                  (v) =>
+                    `<button class="tonal" data-start="${v}">${v}</button>`,
+                )
+                .join(
+                  "",
+                )}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span>Krok ${cursor}</span><button id="forward" class="border" ${cursor === history.length - 1 ? "disabled" : ""}>Ďalej →</button></div><label class="history-label">Návrat k vypracovanému kroku<select id="history">${history.map((_, i) => `<option value="${i}" ${cursor === i ? "selected" : ""}>Krok ${i}</option>`).join("")}</select></label>`
+            : `<label class="input-label" for="answer">${moduleId === "counts" ? "Výsledný počet" : moduleId === "degree" ? `Stupeň vrcholu ${focusVertex}` : moduleId === "cost" ? "Cena prechádzky" : "Postupnosť vrcholov oddelená medzerou"}</label><input id="answer" class="answer-input" type="text" inputmode="none" autocomplete="off" value="${safe(answer)}" placeholder="${algo() ? "A → B → C…" : "Tvoja odpoveď"}"><div class="keypad">${(algo() ? [...g.vertices, "→", "⌫", "AC", "↵"] : ["1", "2", "3", "⌫", "4", "5", "6", "AC", "7", "8", "9", "✦", "←", "0", "→", "↵"]).map((k) => `<button data-key="${k}" class="${["⌫", "↵"].includes(k) ? "accent-key" : ""}" aria-label="${k === "⌫" ? "Vymazať posledný znak" : k === "AC" ? "Vymazať odpoveď" : k === "↵" ? "Skontrolovať odpoveď" : k === "✦" ? "Nápoveda" : k}">${k}</button>`).join("")}</div>${algo() ? '<p class="muted">Klikanie na vrcholy tiež dopĺňa zápis. Celý výsledok kontroluje hrany; skladanie cyklov precvičíš v krokovom režime.</p>' : ""}`
     }${feedback ? `<div class="feedback ${feedback.ok ? "positive" : "negative"}" role="status"><button id="dismiss-feedback" class="feedback-dismiss" aria-label="Zavrieť vysvetlenie">×</button><b>${feedback.ok ? "✓" : "↳"} ${feedback.title}</b>${feedback.details.map((d) => `<p>${safe(d)}</p>`).join("")}</div>` : ""}<div class="answer-actions">${!algo() || mode === "whole" ? '<button id="check" class="primary round">Skontrolovať <span>↗</span></button>' : s.done ? '<button id="next" class="primary round">Ďalší príklad ↗</button>' : ""}<button id="hint" class="border round">✦ Nápoveda</button></div>${awarded && !algo() ? '<button id="next" class="transparent next-link">Ďalší príklad →</button>' : ""}</section></div><details class="theory" ${help ? "open" : ""}><summary>◉ Malý ťahák <span>Definície a pravidlá z prezentácie</span></summary><p>${theory[moduleId]}</p></details><footer>Učenie po malých krokoch. <span>ADM / Cvičenie 8 · ${total} vyriešených</span></footer></main></div>`;
   bind();
 }
 function bind() {
+  document
+    .querySelectorAll("[data-v9]")
+    .forEach((el) => (el.onclick = () => vertex9(el.dataset.v9)));
   const dismiss = document.querySelector("#dismiss-feedback");
   if (dismiss)
     dismiss.onclick = () => {
@@ -555,6 +618,18 @@ function bind() {
   click("#theme", () => {
     theme = theme === "light" ? "dark" : "light";
     persist();
+    render();
+  });
+  click("#v9-matrix", () => {
+    matrixMode = !matrixMode;
+    render();
+  });
+  click("#v9-delete", () => {
+    answer = answer.split(" → ").slice(0, -1).join(" → ");
+    render();
+  });
+  click("#v9-clear", () => {
+    answer = "";
     render();
   });
   click("#new", fresh);
@@ -606,6 +681,7 @@ function bind() {
     el.onclick = () => {
       if (algo() && mode === "steps")
         perform({ type: "vertex", v: el.dataset.vertex });
+      else if (isCv9(moduleId)) vertex9(el.dataset.vertex);
       else if (algo()) {
         answer += (answer ? " → " : "") + el.dataset.vertex;
         render();
@@ -620,11 +696,13 @@ function bind() {
   });
   click("#back", () => {
     cursor--;
+    draft9 = [];
     feedback = null;
     render();
   });
   click("#forward", () => {
     cursor++;
+    draft9 = [];
     feedback = null;
     render();
   });
@@ -742,4 +820,187 @@ function renderSettings() {
         renderSettings();
       }),
   );
+}
+
+function prompt9() {
+  if (moduleId === "complete9")
+    return [
+      `Koľko hrán má K${g.vertices.length}?`,
+      `Aký stupeň má každý vrchol K${g.vertices.length}?`,
+      `Koľko rôznych neorientovaných Hamiltonovských cyklov má K${g.vertices.length}?`,
+    ][q9.variant];
+  if (moduleId === "hamilton")
+    return `Zadaj Hamiltonovskú ${q9.closed ? "kružnicu (cyklus) s návratom do štartu" : "cestu bez návratu do štartu"}.`;
+  return module().prompt;
+}
+function vertex9(v) {
+  if (moduleId === "hamilton") {
+    answer += (answer ? " → " : "") + v;
+    feedback = null;
+    render();
+    return;
+  }
+  if (!step9(moduleId)) return;
+  const s = state(),
+    pair =
+      ["eulerize", "semi9", "cheap9"].includes(moduleId) ||
+      (moduleId === "insert9" && ["first", "second"].includes(s.phase));
+  if (pair) {
+    draft9.push(v);
+    if (draft9.length < 2) {
+      render();
+      return;
+    }
+    const pair = draft9;
+    draft9 = [];
+    perform9(pair);
+  } else perform9([v]);
+}
+function perform9(vs, hint = false) {
+  const r = action9(q9, state(), vs);
+  if (r.error)
+    feedback = { ok: false, title: "Tento krok neplatí.", details: [r.error] };
+  else {
+    history = history.slice(0, cursor + 1);
+    history.push(r.state);
+    cursor++;
+    if (r.state.done) {
+      success();
+      feedback = {
+        ok: true,
+        title: "Hotovo.",
+        details: [
+          moduleId === "rnn9"
+            ? `Najlepší výsledok: ${Math.min(...r.state.results.map((r) => r.cost))}.`
+            : `Cena výsledku: ${r.state.cost}.`,
+        ],
+      };
+    } else
+      feedback = hint
+        ? { ok: true, title: "Doplnený jeden krok.", details: [vs.join(" → ")] }
+        : null;
+  }
+  render();
+}
+function check9() {
+  let ok = false,
+    text = "";
+  if (["eulerize", "semi9"].includes(moduleId)) {
+    const result = finishEuler(q9, state());
+    ok = result.ok;
+    text = result.text;
+  } else if (step9(moduleId)) {
+    ok = state().done;
+    text = ok ? "Všetky kroky sú správne." : "Postup ešte nie je dokončený.";
+  } else if (moduleId === "conditions9") {
+    const expected = conditionAnswers(g),
+      mismatch = Object.keys(expected).filter(
+        (k) => selected.includes(k) !== expected[k],
+      );
+    ok = !mismatch.length;
+    const cuts = cutVertices(g),
+      cycle = hamiltonPaths(g)[0];
+    text =
+      mismatch
+        .map((k) => `${conditionLabels[k]}: ${expected[k] ? "áno" : "nie"}.`)
+        .join(" ") +
+      ` Stupne: ${g.vertices.map((v) => v + ": " + degree(g, v)).join(", ")}. Artikulácie: ${cuts.join(", ") || "žiadne"}. Počet komponentov: ${components(g).length}. ${cycle ? "Hamiltonovský cyklus: " + cycle.join(" → ") : "Vyčerpávajúca kontrola všetkých poradí vrcholov nenašla Hamiltonovský cyklus."}`;
+  } else if (moduleId === "hamilton") {
+    const seq = answer.split(/[\s,;→\-]+/).filter(Boolean),
+      base = q9.closed ? seq.slice(0, -1) : seq;
+    const missing = g.vertices.filter((v) => !base.includes(v)),
+      repeated = base.filter((v, i) => base.indexOf(v) !== i),
+      bad = seq
+        .slice(1)
+        .flatMap((v, i) =>
+          !Number.isFinite(weight(g, seq[i], v)) ? [`${seq[i]} → ${v}`] : [],
+        );
+    ok =
+      seq.length === g.vertices.length + (q9.closed ? 1 : 0) &&
+      !missing.length &&
+      !repeated.length &&
+      !bad.length &&
+      base.every((v) => g.vertices.includes(v)) &&
+      (!q9.closed || seq[0] === seq.at(-1));
+    text = ok
+      ? "Každý vrchol je navštívený práve raz."
+      : `Chýbajúce vrcholy: ${missing.join(", ") || "žiadne"}. Opakované: ${repeated.join(", ") || "žiadne"}. ${bad.length ? `Neexistujúce hrany: ${bad.join(", ")}. ` : ""}${q9.closed ? "Cyklus musí skončiť v štarte." : "Cesta sa nevracia do štartu."}`;
+  } else {
+    ok = answer.trim() !== "" && Number(answer) === q9.number;
+    const n = g.vertices.length;
+    text =
+      moduleId === "complete9"
+        ? [
+            `${n}(${n}−1)/2 = ${q9.number} hrán.`,
+            `${n}−1 = ${q9.number}.`,
+            `(${n}−1)!/2 = ${q9.number}; opačné smery tvoria ten istý cyklus.`,
+          ][q9.variant]
+        : `Optimálna cena je ${q9.optimum}. Cyklus: ${q9.solutions.find((r) => tourCost(g, r) === q9.optimum).join(" → ")}. Porovnané boli všetky poradia vrcholov.`;
+  }
+  feedback = {
+    ok,
+    title: ok ? "Správne." : "Oprav svoju odpoveď.",
+    details: [text],
+  };
+  if (ok) success();
+  render();
+}
+function help9() {
+  if (step9(moduleId)) {
+    if (state().done) return;
+    const action = hint9(q9, state());
+    if (action) {
+      draft9 = [];
+      perform9(action, true);
+    } else {
+      feedback = {
+        ok: true,
+        title: "Parita už spĺňa cieľ.",
+        details: ["Skontroluj cenu a potvrď výsledok tlačidlom Skontrolovať."],
+      };
+      render();
+    }
+    return;
+  }
+  if (moduleId === "hamilton") {
+    const seq = answer.split(/[\s,;→\-]+/).filter(Boolean),
+      candidates =
+        q9.closed && seq.length
+          ? q9.solutions.map((r) => {
+              const base = r.slice(0, -1),
+                i = base.indexOf(seq[0]);
+              if (i < 0) return r;
+              const rotated = [...base.slice(i), ...base.slice(0, i)];
+              return [...rotated, rotated[0]];
+            })
+          : q9.solutions,
+      solution = candidates.find((r) => seq.every((v, i) => r[i] === v));
+    if (solution && seq.length < solution.length) {
+      answer = solution.slice(0, seq.length + 1).join(" → ");
+      feedback = null;
+    } else
+      feedback = {
+        ok: false,
+        title: "Skús sa vrátiť.",
+        details: [
+          "Tento začiatok už nemožno doplniť na požadovanú prechádzku, alebo je už hotová.",
+        ],
+      };
+  } else
+    feedback = {
+      ok: true,
+      title: "Nápoveda",
+      details: [
+        moduleId === "complete9"
+          ? [
+              "Použi n(n−1)/2.",
+              "V kompletnom grafe susedíš so všetkými ostatnými.",
+              "Zafixuj štart. Zvyšné poradia vydeľ dvoma za opačný smer.",
+            ][q9.variant]
+          : moduleId === "conditions9"
+            ? `Stupne: ${g.vertices.map((v) => v + ": " + degree(g, v)).join(", ")}. Diracov prah je ${g.vertices.length}/2. Je postačujúci, nie nutný.`
+            : `Najlacnejší cyklus má cenu ${q9.optimum}. Skús spočítať cenu rôznych poradí; heuristický výsledok nemusí byť optimálny.`,
+      ],
+    };
+  render();
 }
