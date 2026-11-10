@@ -2102,3 +2102,98 @@ progress {
     font-size: 11px;
   }
 }
+
+/* Repeated answers get the largest touch targets. */
+#app .step-choices button {
+  min-height: 56px;
+  font-size: 23px;
+  border-radius: 18px;
+}
+@media (max-width: 600px) {
+  .step-choices {
+    display: grid;
+    grid-template-columns: repeat(var(--vertex-columns), minmax(0, 1fr));
+    gap: 6px;
+    margin: 4px 0;
+  }
+  #app .step-choices button {
+    width: 100%;
+    min-width: 0;
+    padding: 6px;
+  }
+  .algorithm-steps .answer-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+  }
+  .algorithm-steps .answer-card > * {
+    grid-column: 1 / -1;
+  }
+  .algorithm-steps .answer-intro,
+  .algorithm-steps .step-progress,
+  .algorithm-steps .history-label {
+    display: none;
+  }
+  .algorithm-steps .history-controls {
+    grid-column: 1;
+    margin: 0;
+    justify-content: start;
+    gap: 5px;
+  }
+  .algorithm-steps .history-controls > span {
+    display: none;
+  }
+  .algorithm-steps .answer-actions {
+    grid-column: 2;
+    margin: 0;
+    padding: 0;
+    align-self: end;
+  }
+  .algorithm-steps .history-controls button,
+  .algorithm-steps .answer-actions button {
+    min-height: 44px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .algorithm-steps .cycle-box,
+  .algorithm-steps .sequence {
+    margin: 0;
+  }
+  .algorithm-steps .cycle-box small {
+    display: none;
+  }
+  #app .keypad button {
+    min-height: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+}
+@media (max-width: 600px) and (max-height: 700px) {
+  #app .step-choices button {
+    min-height: 48px;
+    font-size: 21px;
+  }
+  .algorithm-steps .history-controls button,
+  .algorithm-steps .answer-actions button {
+    min-height: 40px;
+  }
+  #app .keypad button {
+    min-height: 40px;
+    height: 40px;
+  }
+}
+@media (max-width: 600px) {
+  .input-label,
+  .sequence-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .algorithm-steps .answer-actions:has(#next) #hint {
+    display: none;
+  }
+}
