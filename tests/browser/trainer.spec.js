@@ -37,8 +37,6 @@ for (const width of [320, 390, 1440])
       await page.locator("#hint").click();
     await expect(page.locator('.feedback[data-complete="true"]')).toBeVisible();
     const route = await page.locator(".sequence").innerText();
-    if (await page.locator("#dismiss-feedback").isVisible())
-      await page.locator("#dismiss-feedback").click();
     await page.locator("#back").click();
     await expect(page.locator("#forward")).toBeEnabled();
     await page.locator("#forward").click();

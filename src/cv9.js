@@ -61,23 +61,124 @@ export const cv9Modules = [
   icon: "◇",
 }));
 export const cv9Theory = {
-  eulerize:
-    "Eulerizácia duplikuje iba existujúce hrany. Výsledný graf musí byť súvislý a mať všetky stupne párne. Vo váženom grafe minimalizujeme súčet váh duplikovaných hrán. Párujeme nepárne vrcholy najkratšími cestami; vnútorné vrcholy cesty dostanú +2.",
-  semi9:
-    "Semi-eulerizácia necháva práve dva nepárne vrcholy. Duplikujeme existujúce hrany a hľadáme najmenšiu cenu. Dva nepárne vrcholy budú štartom a koncom otvoreného eulerovského ťahu.",
-  hamilton:
-    "Hamiltonovská cesta prejde každým vrcholom práve raz. Hamiltonovský cyklus sa navyše vráti do štartu. Na rozdiel od eulerovského nemusí použiť všetky hrany.",
-  conditions9:
-    "Súvislosť, minimálny stupeň aspoň 2 a neprítomnosť artikulácie sú nutné, ale spolu nestačia. Diracova podmienka pre jednoduchý neorientovaný graf s n ≥ 3: každý stupeň je aspoň n/2. Je postačujúca, nie nutná. Artikulácia je vrchol, ktorého odstránenie zvýši počet komponentov.",
-  complete9:
-    "Kₙ má n(n−1)/2 hrán, stupeň každého vrcholu n−1 a (n−1)!/2 rôznych neorientovaných Hamiltonovských cyklov (n ≥ 3). Otočenie ani opačný smer nepočítame znovu. Brute force porovná všetky a zaručí optimum; počet rastie faktoriálne.",
-  nn9: "Nearest neighbor vyberá z aktuálneho vrcholu najlacnejšiu hranu do ešte nenavštíveného vrcholu. Nakoniec sa vracia do štartu. Je to heuristika, nemusí nájsť optimum. Pri rovnakej váhe prijímame ktorúkoľvek najlacnejšiu možnosť.",
-  rnn9: "Nearest neighbor zopakujeme zo všetkých n štartov a vyberieme najlacnejší výsledok. Ani táto heuristika nemusí dosiahnuť globálne optimum.",
-  cheap9:
-    "Cheapest link porovnáva hrany celého grafu. Nepridá hranu, ktorá by vytvorila stupeň 3 alebo cyklus skôr, ako zahrnie všetky vrcholy. Posledná hrana smie uzavrieť celý Hamiltonovský cyklus. Heuristika nezaručuje optimum.",
-  insert9:
-    "Variant z prezentácie: vyber najlacnejšiu hranu, potom najlacnejšiu hranu incidentnú s prvou a uzavri trojuholník. Vyber najlacnejšiu hranu YX z cyklu k novému vrcholu X. Pre oboch susedov Z vrcholu Y porovnaj Δ = w(YX)+w(XZ)−w(YZ). Vlož X medzi Y a Z s najnižším Δ. Neporovnávame všetky hrany cyklu ako v inom variante cheapest insertion.",
-  tsp9: "Obchodný cestujúci hľadá najlacnejší Hamiltonovský cyklus. Brute force porovná všetky cykly a zaručí optimum. Nearest neighbor, repetitive NN, cheapest link a nearest insertion sú heuristiky a môžu dať drahší výsledok.",
+  eulerize: `### Ako postupovať
+1. Over súvislosť a vypíš vrcholy s nepárnym stupňom.
+2. Rozdeľ ich do dvojíc. Pre každú dvojicu nájdi **najlacnejšiu cestu** medzi jej vrcholmi; nemusí to byť priama hrana.
+3. Porovnaj možné párovania a vyber to s najmenším súčtom cien ciest.
+4. Duplikuj všetky hrany vybraných ciest. V aplikácii zadávaj každú hranu dvojicou jej vrcholov.
+5. Skontroluj, že všetky stupne sú párne a cena duplikácie je najmenšia, potom stlač Skontrolovať.
+
+### Prečo to funguje
+Duplikácia cesty zmení paritu iba jej koncov: vnútorné vrcholy dostanú dve nové incidentné hrany, konce jednu. Spárovaním všetkých nepárnych vrcholov ich preto zmeníš na párne.
+
+### Na čo si dať pozor
+Duplikovať smieš iba existujúce hrany. Nestačí zvoliť najbližšiu dvojicu ako prvú: **najlacnejšie párovanie ako celok** môže byť iné. Ak je graf už eulerovský, netreba duplikovať nič.`,
+  semi9: `### Ako postupovať
+1. Vypíš nepárne vrcholy. Cieľom sú **presne dva**, ktoré budú začiatkom a koncom otvoreného ťahu.
+2. Ak sú už dva, najlacnejšie riešenie je nič neduplikovať.
+3. Ak ich je viac, vyber, ktoré dva necháš nepárne. Ostatné spáruj pomocou najlacnejších ciest.
+4. Porovnaj možné ponechané dvojice aj párovania ostatných vrcholov. Vyber najmenšiu celkovú cenu a duplikuj hrany týchto ciest.
+5. Ak nebol nepárny žiadny vrchol, duplikuj najlacnejšiu hranu medzi dvoma rôznymi vrcholmi: vytvorí práve dva nepárne konce.
+
+### Prečo to funguje
+Duplikovaná cesta zmení paritu svojich koncov, vnútorných vrcholov nie. Pri otvorenom eulerovskom ťahu nepotrebuje štart spárovaný príchod a koniec spárovaný odchod.
+
+### Na čo si dať pozor
+Neopravuj všetky nepárne vrcholy na párne: tým by vznikol eulerovský graf, ale tu zadanie vyžaduje práve dva nepárne vrcholy.`,
+  hamilton: `### Ako postupovať
+1. Prečítaj, či sa žiada **cesta alebo cyklus**.
+2. Skladaj postupnosť susedných vrcholov. Každý vrchol navštív práve raz.
+3. Ak ďalší krok vedie iba k už navštíveným vrcholom, vráť sa k skoršej voľbe a skús inú vetvu.
+4. Pri ceste skonči po návšteve všetkých vrcholov. Pri cykle musí existovať aj hrana z posledného vrcholu do štartu; štart na konci zopakuj.
+
+### Prečo to funguje
+Hamiltonovská úloha pokrýva **vrcholy**. Nemusí použiť všetky hrany grafu. Systematické skúšanie a návrat pri slepej vetve umožnia nájsť platné poradie.
+
+### Na čo si dať pozor
+Nezamieňaj Hamiltonovskú úlohu s Eulerovou, ktorá pokrýva hrany. Pri cykle má každý vrchol dve použité susedné hrany. Vrchol nízkeho stupňa preto výrazne obmedzuje tvoje možnosti.`,
+  conditions9: `### Ako postupovať
+Každé tvrdenie over samostatne a označ všetky pravdivé.
+
+1. Skontroluj súvislosť: dostaneš sa po hranách ku všetkým vrcholom?
+2. Vypíš stupne a over, či je každý aspoň 2.
+3. Hľadaj artikuláciu: ak odstrániš vrchol aj jeho hrany, zvýši sa počet oddelených komponentov?
+4. Pre Diracovu podmienku over **deg(v) ≥ n/2 pre každý vrchol**. Pri nepárnom n musí celočíselný stupeň dosiahnuť najbližšie vyššie celé číslo.
+5. Existenciu Hamiltonovského cyklu over konkrétnym cyklom alebo systematickým prehľadaním možností.
+
+### Prečo to funguje
+Hamiltonovský cyklus potrebuje súvislosť, dva susedné kroky pri každom vrchole a nemôže prechádzať medzi časťami iba cez jedinú artikuláciu. Diracova veta pre jednoduchý neorientovaný graf s n ≥ 3 dáva silnejšiu **postačujúcu** podmienku existencie cyklu.
+
+### Na čo si dať pozor
+Nutná podmienka nemusí stačiť. Ak Diracova podmienka neplatí, neznamená to, že cyklus neexistuje. Napríklad kružnica s piatimi vrcholmi má Hamiltonovský cyklus, hoci každý stupeň je iba 2.`,
+  complete9: `### Ako postupovať
+1. Zisti počet vrcholov n a prečítaj, či sa pýta na hrany, stupeň alebo počet cyklov.
+2. Počet hrán Kₙ je **n(n−1)/2**.
+3. Stupeň každého vrcholu je **n−1**.
+4. Počet rôznych neorientovaných Hamiltonovských cyklov pre n ≥ 3 je **(n−1)!/2**.
+
+### Prečo to funguje
+Pri hranách každý vrchol spájaš so všetkými ostatnými, ale každú dvojicu započítaš dvakrát. Pri cykloch zafixuješ jeden štart, ostatných n−1 vrcholov usporiadaš a vydelíš dvomi za opačné smery toho istého cyklu.
+
+### Príklad a kontrola
+Pre K₅ dostaneš 10 hrán, stupeň 4 a 12 rôznych neorientovaných Hamiltonovských cyklov. Faktoriál znamená násobenie zostupných kladných celých čísel: 4! = 4 × 3 × 2 × 1.`,
+  nn9: `### Ako postupovať
+1. Vyber štartovací vrchol.
+2. Z aktuálneho vrcholu porovnaj ceny iba do **ešte nenavštívených** vrcholov.
+3. Prejdi do najlacnejšieho z nich a označ ho za navštívený.
+4. Opakuj, kým neprejdeš všetky vrcholy. Nakoniec sa vráť do štartu; aplikácia tento návrat doplní automaticky.
+
+### Prečo to funguje
+Nearest neighbor robí vždy lokálne najlacnejší ďalší krok. Je rýchly, ale nevidí, aké drahé spojenia si môže nechať na koniec. Preto je to **heuristika, nie záruka najlacnejšieho cyklu**.
+
+### Na čo si dať pozor
+Nehľadaj najlacnejšiu hranu celého grafu: hľadaj ju z aktuálneho vrcholu. Nevracaj sa do už navštíveného vrcholu pred dokončením. Pri rovnakých najnižších cenách môžeš vybrať ktorúkoľvek z nich.`,
+  rnn9: `### Ako postupovať
+1. Spusť nearest neighbor z prvého určeného štartu.
+2. V každom kroku zvoľ najlacnejší prechod do nenavštíveného vrcholu a po prejdení všetkých sa vráť do štartu.
+3. Zapíš cenu celého cyklu vrátane návratu.
+4. Zopakuj tento postup zo všetkých vrcholov. V aplikácii sa štarty skúšajú v poradí vrcholov.
+5. Porovnaj ceny dokončených behov a vyber najmenšiu.
+
+### Prečo to funguje
+Výsledok nearest neighbor závisí od štartu. Opakovaním z rôznych štartov rozšíriš množinu skúšaných trás a môžeš nájsť lacnejší výsledok.
+
+### Na čo si dať pozor
+Pre nový beh zabudni na navštívené vrcholy predošlého behu. Porovnávaj **celkové ceny**, nie iba prvú hranu. Ani najlepší z týchto behov nemusí byť globálne optimum.`,
+  cheap9: `### Ako postupovať
+1. Zoraď si hrany celého grafu podľa ceny od najlacnejšej.
+2. Vyber najlacnejšiu **prípustnú** nepoužitú hranu.
+3. Hranu odmietni, ak by niektorému vrcholu dala tretí použitý koniec, alebo ak by uzavrela menší cyklus ešte pred zahrnutím všetkých vrcholov.
+4. Pokračuj, až posledná hrana uzavrie jeden cyklus cez všetky vrcholy.
+
+### Prečo to funguje
+Hamiltonovský cyklus má v každom vrchole stupeň 2. Menší predčasný cyklus by sa už nedal pripojiť k ostatným vrcholom bez prekročenia tohto stupňa.
+
+### Na čo si dať pozor
+Na rozdiel od nearest neighbor nevyberáš iba z jedného aktuálneho vrcholu: rozhoduješ medzi hranami **celého grafu**. Najlacnejšia hrana môže byť zakázaná, preto vždy najprv over prípustnosť. Táto heuristika nezaručuje globálne optimum.`,
+  insert9: `### Ako postupovať
+1. Vyber najlacnejšiu hranu celého grafu.
+2. Vyber najlacnejšiu ďalšiu hranu incidentnú s prvou, ktorá pripojí tretí vrchol. Aplikácia uzavrie počiatočný trojuholník.
+3. Medzi hranami z hotového cyklu do nenavštívených vrcholov nájdi najlacnejšiu hranu **Y–X**. Vyber jej vonkajší vrchol X.
+4. Nájdi oboch susedov Z vrcholu Y na cykle. Pre každého spočítaj **Δ = w(YX) + w(XZ) − w(YZ)**.
+5. Vyber suseda Z s menším prírastkom. Hrana Y–Z sa nahradí dvojicou Y–X a X–Z.
+6. Opakuj výber nového X a jeho vloženie, až cyklus obsahuje všetky vrcholy.
+
+### Prečo to funguje
+K pôvodnej cene pridáš dve nové hrany a odčítaš odstránenú. Vloženie medzi susedov zachová jediný uzavretý cyklus.
+
+### Na čo si dať pozor
+Používame **variant z prezentácie**: po výbere Y–X porovnávaš iba dvoch susedov Y. Nevyberáš ľubovoľnú najlepšiu hranu z celého cyklu ako pri inom variante cheapest insertion.`,
+  tsp9: `### Ako postupovať
+1. Zafixuj si jeden štartovací vrchol, aby si rovnaký cyklus nepočítal z rôznych začiatkov.
+2. Skúšaj poradia ostatných vrcholov. Každé platné poradie musí prejsť všetkými vrcholmi práve raz a vrátiť sa do štartu.
+3. Pre každú trasu spočítaj všetky váhy **vrátane poslednej hrany späť do štartu**.
+4. Porovnaj výsledky a zadaj najmenšiu cenu. Pri neorientovanom grafe stačí jednu trasu a jej obrátenie posúdiť ako ten istý cyklus.
+
+### Prečo to funguje
+Brute force prejde všetky možnosti, a preto zaručí optimum. Nevýhodou je faktoriálny rast počtu poradí. Pri malých grafoch si pomôž priebežnou najlepšou cenou: ak rozpracovaná trasa pri kladných váhach už stojí viac, netreba ju dokončiť.
+
+### Na čo si dať pozor
+Najlacnejší výsledok jednej heuristiky ešte nemusí byť optimum. Nearest neighbor, opakovaný nearest neighbor, cheapest link a nearest insertion skúšajú iba časť možností.`,
 };
 export const isCv9 = (id) => cv9Modules.some((m) => m.id === id);
 export const step9 = (id) =>

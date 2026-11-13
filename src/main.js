@@ -1,4 +1,12 @@
+import {
+  exercisePath,
+  parseExercisePath,
+  seededRandom,
+  newExerciseSeed,
+} from "./exercise-route.js";
+import { marked } from "marked";
 import { summarize, validateBackup, choosePracticeModule } from "./stats.js";
+import { placeWeightLabels } from "./graph-layout.js";
 import {
   isCv9,
   step9,
@@ -64,6 +72,7 @@ let level = ["easy", "medium", "hard", "fiit"].includes(saved.level)
   q9 = null,
   draft9 = [],
   matrixMode = true,
+  matrixNotes = {},
   g,
   history = [],
   cursor = 0,
@@ -79,6 +88,7 @@ let finalized = false;
 let trainingMode = saved.trainingMode === "testing" ? "testing" : "learning";
 let feedbackRequested = false;
 let personalization = saved.personalization === true;
+let lastExercise = saved.lastExercise || "";
 const folders = Object.fromEntries(
   presentations.map((p) => [
     p.id,
@@ -113,6 +123,7 @@ function persist() {
         progress,
         attempts,
         folders,
+        lastExercise,
       }),
     );
   } catch {}
@@ -129,13 +140,13 @@ function recordAttempt(event) {
   if (event === "solved") activeAttempt.solved = true;
   persist();
 }
-function makeSequence() {
-  let v = g.vertices[Math.floor(Math.random() * g.vertices.length)],
+function makeSequence(rng) {
+  let v = g.vertices[Math.floor(rng() * g.vertices.length)],
     seq = [v];
-  for (let i = 0; i < 2 + Math.floor(Math.random() * 6); i++) {
+  for (let i = 0; i < 2 + Math.floor(rng() * 6); i++) {
     const choices = incident(g, v);
     if (!choices.length) break;
-    v = other(choices[Math.floor(Math.random() * choices.length)], v);
+    v = other(choices[Math.floor(rng() * choices.length)], v);
     seq.push(v);
   }
   return seq;
@@ -190,7 +201,7 @@ function countTask() {
   ];
   return tasks[countVariant];
 }
-function nextExercise() {
+function nextExercise(options) {
   if (personalization) {
     moduleId = choosePracticeModule(
       attempts,
@@ -198,50 +209,57 @@ function nextExercise() {
       level,
     );
   }
-  fresh();
+  fresh(options);
 }
-function fresh() {
+function fresh({ seed = newExerciseSeed(), navigation = "push" } = {}) {
+  matrixNotes = {};
   clearTimeout(completionTimer);
   finalized = false;
   feedbackRequested = false;
   activeAttempt = null;
+  const rng = seededRandom(seed);
   if (isCv9(moduleId)) {
-    q9 = make9(moduleId, level);
+    q9 = make9(moduleId, level, rng);
     g = q9.g;
-    draft9 = [];
-    selected = [];
-    answer = "";
-    feedback = null;
-    awarded = false;
     history = [initial9()];
-    cursor = 0;
-    render();
-    return;
+  } else {
+    while (true) {
+      countVariant = Math.floor(rng() * 4);
+      g = randomGraph(level, moduleId, rng);
+      if (["walk", "cost"].includes(moduleId)) {
+        g.directed = false;
+        if (!g.edges.length) continue;
+        sequence = makeSequence(rng);
+        if (moduleId === "walk" && rng() < 0.25) {
+          sequence = g.vertices.slice(0, 3);
+          for (let i = sequence.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1));
+            [sequence[i], sequence[j]] = [sequence[j], sequence[i]];
+          }
+        }
+        if (sequence.length < 2) continue;
+      }
+      break;
+    }
+    focusVertex = g.vertices[Math.floor(rng() * g.vertices.length)];
+    history = [initialAlgorithm(g)];
   }
-  countVariant = Math.floor(Math.random() * 4);
-  g = randomGraph(level, moduleId);
-  if (["walk", "cost"].includes(moduleId)) {
-    g.directed = false;
-    if (!g.edges.length) {
-      fresh();
-      return;
-    }
-    sequence = makeSequence();
-    if (moduleId === "walk" && Math.random() < 0.25) {
-      sequence = [...g.vertices.slice(0, 3)].sort(() => Math.random() - 0.5);
-    }
-    if (sequence.length < 2) {
-      fresh();
-      return;
-    }
-  }
-  focusVertex = g.vertices[Math.floor(Math.random() * g.vertices.length)];
+  draft9 = [];
   selected = [];
   answer = "";
   feedback = null;
   awarded = false;
-  history = [initialAlgorithm(g)];
   cursor = 0;
+  lastExercise = exercisePath(presentation(), module(), level, seed);
+  const target = lastExercise + location.hash;
+  if (location.pathname + location.hash !== target) {
+    window.history[navigation === "push" ? "pushState" : "replaceState"](
+      {},
+      "",
+      target,
+    );
+  }
+  persist();
   render();
 }
 function success() {
@@ -257,6 +275,7 @@ function success() {
 function advanceAfterFeedback(delay = 1200) {
   finalized = true;
   clearTimeout(completionTimer);
+  if (trainingMode === "learning") return;
   const completedAttempt = activeAttempt;
   completionTimer = setTimeout(() => {
     if (activeAttempt === completedAttempt && !location.hash && finalized)
@@ -429,7 +448,13 @@ function check() {
   feedback = {
     ok: correct,
     title: correct ? "Presne tak. Dobrá práca!" : "Ešte to skús upraviť.",
-    details: correct ? ["Správne. Pokračujeme ďalším príkladom…"] : details,
+    details: correct
+      ? [
+          trainingMode === "learning"
+            ? "Správne. Pokračuj zatvorením vysvetlenia alebo tlačidlom Ďalší príklad."
+            : "Správne. Pokračujeme ďalším príkladom…",
+        ]
+      : details,
   };
   if (correct) success();
   else {
@@ -594,6 +619,7 @@ function graphSVG() {
       ]),
     );
   const s = state();
+  const curves = [];
   let out =
     '<svg viewBox="0 -35 480 485" role="group" aria-label="Interaktívny graf"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>';
   for (const e of g.edges) {
@@ -609,6 +635,24 @@ function graphSVG() {
       my = (a.y + b.y) / 2 + ((b.x - a.x) / len) * offset;
     const dx = (b.x - a.x) / len,
       dy = (b.y - a.y) / len;
+    if (g.weighted) {
+      curves.push({
+        id: e.id,
+        points:
+          e.a === e.b
+            ? [
+                { x: a.x - 12, y: a.y - 16 },
+                { x: a.x - 80, y: a.y - 85 },
+                { x: a.x + 80, y: a.y - 85 },
+                { x: a.x + 12, y: a.y - 16 },
+              ]
+            : [
+                { x: a.x + dx * 24, y: a.y + dy * 24 },
+                { x: mx, y: my },
+                { x: b.x - dx * 27, y: b.y - dy * 27 },
+              ],
+      });
+    }
     const d =
       e.a === e.b
         ? `M ${a.x - 12} ${a.y - 16} C ${a.x - 80} ${a.y - 85} ${a.x + 80} ${a.y - 85} ${a.x + 12} ${a.y - 16}`
@@ -616,7 +660,12 @@ function graphSVG() {
     const used =
       ((algo() && mode === "steps") || isCv9(moduleId)) &&
       s.used.includes(e.id);
-    out += `<g class="edge ${used ? "used" : ""}"><path class="edge-hit" d="${d}"/><path class="edge-line" d="${d}" ${g.directed ? 'marker-end="url(#arrow)"' : ""}/>${g.weighted ? `<circle cx="${e.a === e.b ? a.x : mx}" cy="${e.a === e.b ? a.y - 60 : my}" r="14" class="weight-bg"/><text x="${e.a === e.b ? a.x : mx}" y="${(e.a === e.b ? a.y - 60 : my) + 5}" class="weight">${e.weight}</text>` : ""}</g>`;
+    out += `<g class="edge ${used ? "used" : ""}"><path class="edge-hit" d="${d}"/><path class="edge-line" d="${d}" ${g.directed ? 'marker-end="url(#arrow)"' : ""}/></g>`;
+  }
+  const weightPositions = placeWeightLabels(curves, Object.values(pos));
+  for (const e of g.weighted ? g.edges : []) {
+    const p = weightPositions.get(e.id);
+    out += `<g class="edge-weight" data-weight-edge="${e.id}" pointer-events="none"><circle cx="${p.x}" cy="${p.y}" r="16" class="weight-bg"/><text x="${p.x}" y="${p.y + 5}" class="weight">${e.weight}</text></g>`;
   }
   for (const v of g.vertices) {
     const p = pos[v],
@@ -646,7 +695,7 @@ function render() {
     s = state(),
     total = Object.values(progress).reduce((a, b) => a + b, 0);
   $("#app").innerHTML =
-    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link stats-link" href="#statistiky" aria-label="Štatistiky">▥</a><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" data-folder="${p.id}" ${folders[p.id] ? "open" : ""}><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="${presentation().source}" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><button id="new" class="border round">↻ Nový príklad</button><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><details class="theory" ${help ? "open" : ""}><summary>Malý ťahák <span>Definície a pravidlá z prezentácie</span></summary><button id="close-theory" class="theory-close" aria-label="Zavrieť ťahák">×</button><p>${theory[moduleId]}</p></details></div><section class="task-card"><h2 ${trainingMode === "testing" && feedback && !feedbackRequested ? 'role="status"' : ""}>${trainingMode === "testing" && feedback && !feedbackRequested ? (feedback.ok ? "✓ Správne." : "↳ Nesprávne.") : isCv9(moduleId) ? prompt9() : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${isCv9(moduleId) && g.weighted && matrixMode ? matrix9(g) : graphSVG()}${isCv9(moduleId) && g.weighted ? `<button id="v9-matrix" class="matrix-toggle border">${matrixMode ? "Zobraziť graf" : "Matica váh"}</button>` : ""}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
+    `<header class="topbar"><button class="circle transparent menu-toggle" id="menu" aria-label="Otvoriť menu">☰</button><a class="brand" href="#"><span class="brand-mark">a<span>↗</span></span><span>ADM<span class="brand-sub">tréningový priestor</span></span></a><div class="header-end"><a class="settings-link stats-link" href="#statistiky" aria-label="Štatistiky">▥</a><a class="settings-link" href="#nastavenia" aria-label="Nastavenia">⚙</a><span class="saved"><span class="status-dot"></span> Pokrok uložený v zariadení</span></div></header><div class="layout"><aside class="sidebar ${menu ? "open" : ""}"><span class="eyebrow nav-label">PREZENTÁCIE</span>${presentations.map((p) => `<details class="presentation-folder" data-folder="${p.id}" ${folders[p.id] ? "open" : ""}><summary><span class="presentation-icon">▤</span><span>${p.title}<small>${p.subtitle}</small></span></summary><nav class="module-nav">${p.modules.map((x) => `<button class="nav-item ${moduleId === x.id ? "active" : ""}" data-module="${x.id}"><span class="nav-icon">${x.icon}</span><span>${x.title}</span>${progress[x.id] ? `<span class="nav-count">${progress[x.id]}</span>` : ""}</button>`).join("")}</nav></details>`).join("")}<div class="sidebar-bottom"><div class="progress-label"><span>Každý príklad sa počíta</span><b>${total}</b></div><div class="progress-track"><span style="width:${Math.min(100, total * 5)}%"></span></div><small>správne vyriešených príkladov</small><a href="${presentation().source}" target="_blank" rel="noopener" class="source-link">↗ Otvoriť prezentáciu</a></div></aside>${menu ? '<button class="scrim" id="close-menu" aria-label="Zatvoriť menu"></button>' : ""}<main><div class="page-heading"><div><h1>${m.title}</h1></div><button id="new" class="border round">↻ Nový príklad</button><span class="topic-badge">${m.icon}</span></div><div class="toolbar"><div class="difficulty"><div class="segments" aria-label="Obťažnosť">${["easy", "medium", "hard", "fiit"].map((l) => `<button data-level="${l}" class="${level === l ? "chosen" : ""}" aria-pressed="${level === l}">${{ easy: "Easy", medium: "Med", hard: "Hard", fiit: "FIIT ☠" }[l]}</button>`).join("")}</div></div><details class="theory" ${help ? "open" : ""}><summary>Malý ťahák <span>Postup, logika a pravidlá</span></summary><button id="close-theory" class="theory-close" aria-label="Zavrieť ťahák">×</button><div class="theory-content">${marked.parse(theory[moduleId])}</div></details></div><section class="task-card"><h2 ${trainingMode === "testing" && feedback && !feedbackRequested ? 'role="status"' : ""}>${trainingMode === "testing" && feedback && !feedbackRequested ? (feedback.ok ? "✓ Správne." : "↳ Nesprávne.") : isCv9(moduleId) ? prompt9() : moduleId === "counts" ? countTask().question : m.prompt}</h2>${algo() ? `<div class="mode-switch"><button data-mode="steps" class="${mode === "steps" ? "chosen" : ""}">Krok za krokom</button><button data-mode="whole" class="${mode === "whole" ? "chosen" : ""}">Celý výsledok</button></div>` : ""}</section><div class="workspace"><section class="graph-card"><div class="panel-heading"><span>PRACOVNÁ PLOCHA</span><span class="graph-meta">${g.vertices.length} vrcholov · ${g.edges.length} hrán</span></div>${isCv9(moduleId) && g.weighted && matrixMode ? matrix9(g, ["eulerize", "semi9"].includes(moduleId)) : graphSVG()}${isCv9(moduleId) && g.weighted ? `<button id="v9-matrix" class="matrix-toggle border">${matrixMode ? "Zobraziť graf" : "Matica váh"}</button>` : ""}<div class="graph-caption"><span class="legend-dot"></span>${algo() && mode === "steps" ? "Vyber ďalší vrchol v grafe" : moduleId === "degree" ? `Zvýraznený vrchol: ${focusVertex}` : "Vrcholy v kruhu, možnosti na dosah."}</div><details class="notation"><summary>Zápis grafu G = (V, E)</summary><p>V = {${g.vertices.join(", ")}}</p><p>E = {${g.edges.map((e) => `${e.a}${g.directed ? "→" : "–"}${e.b}${g.weighted ? ` [${e.weight}]` : ""}`).join(", ")}}</p><small>Násobné hrany sú v zápise uvedené samostatne.</small></details></section><section class="answer-card"><div class="panel-heading"><span>${algo() ? "TVOJ POSTUP" : "TVOJA ODPOVEĎ"}</span><span class="tiny-pill">${algo() ? "↝" : "✎"}</span></div>${["walk", "cost"].includes(moduleId) ? `<div class="sequence-label">Zadaná prechádzka</div><div class="sequence">${sequence.join(" → ")}</div>` : ""}${
       isCv9(moduleId) && !["complete9", "tsp9"].includes(moduleId)
         ? view9(q9, s, {
             draft: draft9,
@@ -683,7 +732,7 @@ function render() {
                   "",
                 )}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span aria-label="Krok ${cursor}">${cursor}</span><button id="forward" class="border" ${cursor === history.length - 1 ? "disabled" : ""}>Ďalej →</button><button id="hint" class="border round">✦ Nápoveda</button></div><label class="history-label"><select id="history" aria-label="Návrat k vypracovanému kroku">${history.map((_, i) => `<option value="${i}" ${cursor === i ? "selected" : ""}>${i}</option>`).join("")}</select></label>`
             : `<label class="input-label" for="answer">${moduleId === "counts" ? "Výsledný počet" : moduleId === "degree" ? `Stupeň vrcholu ${focusVertex}` : moduleId === "cost" ? "Cena prechádzky" : "Postupnosť vrcholov oddelená medzerou"}</label><input id="answer" class="answer-input" type="text" inputmode="none" autocomplete="off" value="${safe(answer)}" placeholder="${algo() ? "A → B → C…" : "Tvoja odpoveď"}"><div class="keypad">${(algo() ? [...g.vertices, "→", "⌫", "AC", "↵"] : ["1", "2", "3", "⌫", "4", "5", "6", "AC", "7", "8", "9", "✦", "←", "0", "→", "↵"]).map((k) => `<button data-key="${k}" class="${["⌫", "↵"].includes(k) ? "accent-key" : ""}" aria-label="${k === "⌫" ? "Vymazať posledný znak" : k === "AC" ? "Vymazať odpoveď" : k === "↵" ? "Skontrolovať odpoveď" : k === "✦" ? "Nápoveda" : k}">${k}</button>`).join("")}</div>${algo() ? '<p class="muted">Klikanie na vrcholy tiež dopĺňa zápis. Celý výsledok kontroluje hrany; skladanie cyklov precvičíš v krokovom režime.</p>' : ""}`
-    }${feedback && (trainingMode === "learning" || feedbackRequested) ? `<div class="feedback ${feedback.ok ? "positive" : "negative"}" data-complete="${awarded}" role="status"><button id="dismiss-feedback" class="feedback-dismiss" aria-label="Zavrieť vysvetlenie">×</button><b>${feedback.ok ? "✓" : "↳"} ${feedback.title}</b>${feedback.details.map((d) => `<p>${safe(d)}</p>`).join("")}</div>` : ""}<div class="answer-actions">${!algo() || mode === "whole" ? '<button id="check" class="primary round">Skontrolovať <span>↗</span></button>' : ""}${!algo() || mode === "whole" ? '<button id="hint" class="border round">✦ Nápoveda</button>' : ""}</div>${isCv9(moduleId) && awarded ? '<button id="next" class="transparent next-link">Ďalší príklad →</button>' : ""}</section></div><footer>Učenie po malých krokoch. <span>ADM / ${presentation().title} · ${total} vyriešených</span></footer></main></div>`;
+    }${feedback && (trainingMode === "learning" || feedbackRequested) ? `<div class="feedback ${feedback.ok ? "positive" : "negative"}" data-complete="${awarded}" role="status"><button id="dismiss-feedback" class="feedback-dismiss" aria-label="Zavrieť vysvetlenie">×</button><b>${feedback.ok ? "✓" : "↳"} ${feedback.title}</b>${feedback.details.map((d) => `<p>${safe(d)}</p>`).join("")}</div>` : ""}<div class="answer-actions">${!algo() || mode === "whole" ? '<button id="check" class="primary round">Skontrolovať <span>↗</span></button>' : ""}${!algo() || mode === "whole" ? '<button id="hint" class="border round">✦ Nápoveda</button>' : ""}</div>${(isCv9(moduleId) && awarded) || (trainingMode === "learning" && finalized) ? '<button id="next" class="transparent next-link">Ďalší príklad →</button>' : ""}</section></div><footer>Učenie po malých krokoch. <span>ADM / ${presentation().title} · ${total} vyriešených</span></footer></main></div>`;
   bind();
 }
 function bind() {
@@ -699,6 +748,10 @@ function bind() {
   const dismiss = document.querySelector("#dismiss-feedback");
   if (dismiss)
     dismiss.onclick = () => {
+      if (finalized && trainingMode === "learning") {
+        nextExercise();
+        return;
+      }
       feedback = null;
       render();
     };
@@ -723,6 +776,18 @@ function bind() {
     matrixMode = !matrixMode;
     render();
   });
+  const matrixInputs = document.querySelectorAll("[data-matrix-note]");
+  matrixInputs.forEach((input) => {
+    const key = input.dataset.matrixNote;
+    input.value = matrixNotes[key] || "";
+    input.oninput = () => {
+      matrixNotes[key] = input.value;
+      matrixInputs.forEach((other) => {
+        if (other !== input && other.dataset.matrixNote === key)
+          other.value = input.value;
+      });
+    };
+  });
   click("#v9-delete", () => {
     answer = answer.split(" → ").slice(0, -1).join(" → ");
     render();
@@ -731,8 +796,8 @@ function bind() {
     answer = "";
     render();
   });
-  click("#new", nextExercise);
-  click("#next", nextExercise);
+  click("#new", () => nextExercise());
+  click("#next", () => nextExercise());
   click("#check", check);
   click("#hint", hint);
   if (finalized) {
@@ -873,7 +938,24 @@ function bind() {
   }
   $(".theory").ontoggle = (e) => (help = e.target.open);
 }
-nextExercise();
+const initialRoute =
+  parseExercisePath(location.pathname, presentations) ||
+  (location.pathname === "/" && parseExercisePath(lastExercise, presentations));
+if (initialRoute) {
+  moduleId = initialRoute.moduleId;
+  level = initialRoute.level;
+  fresh({ seed: initialRoute.seed, navigation: "replace" });
+} else {
+  nextExercise({ navigation: "replace" });
+}
+window.addEventListener("popstate", () => {
+  const route = parseExercisePath(location.pathname, presentations);
+  if (route && location.pathname !== lastExercise) {
+    moduleId = route.moduleId;
+    level = route.level;
+    fresh({ seed: route.seed, navigation: "replace" });
+  } else render();
+});
 
 window.addEventListener("hashchange", () => {
   clearTimeout(completionTimer);
@@ -965,6 +1047,8 @@ function renderSettings() {
           theme,
           trainingMode,
           personalization,
+          folders,
+          lastExercise,
           ...backup,
         }),
       );
@@ -996,20 +1080,7 @@ function renderSettings() {
           feedbackRequested = false;
         } else {
           level = button.dataset.value;
-          g = randomGraph(level, moduleId);
-          history = [initialAlgorithm(g)];
-          cursor = 0;
-          selected = [];
-          answer = "";
-          feedback = null;
-          awarded = false;
-          activeAttempt = null;
-          finalized = false;
-          focusVertex = g.vertices[0];
-          if (["walk", "cost"].includes(moduleId)) {
-            while (!g.edges.length) g = randomGraph(level, moduleId);
-            sequence = makeSequence();
-          }
+          fresh({ navigation: "replace" });
         }
         persist();
         renderSettings();

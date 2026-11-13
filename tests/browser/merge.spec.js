@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("Cvičenie 9 zachová štatistiky a automaticky pokračuje po eulerizácii", async ({
+test("Cvičenie 9 zachová štatistiky a pokračuje po zatvorení výsledku eulerizácie", async ({
   page,
 }) => {
   await page.goto("/");
@@ -16,7 +16,8 @@ test("Cvičenie 9 zachová štatistiky a automaticky pokračuje po eulerizácii"
   ]);
   expect(saved.attempts[0].hints).toBeGreaterThan(0);
   expect(saved.progress.eulerize).toBe(1);
-  await expect(page.locator("#check")).toBeEnabled({ timeout: 4000 });
+  await page.locator("#dismiss-feedback").click();
+  await expect(page.locator("#check")).toBeEnabled();
   await expect(page.locator('.feedback[data-complete="true"]')).toHaveCount(0);
   await page.locator(".stats-link").click();
   await expect(

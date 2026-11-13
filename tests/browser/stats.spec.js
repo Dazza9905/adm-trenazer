@@ -64,7 +64,7 @@ test("prázdna história a horný ťahák", async ({ page }) => {
   await page.getByRole("link", { name: "Prejsť na tréning →" }).click();
   await expect(page.locator("#theme")).toHaveCount(0);
   await page.locator(".toolbar .theory summary").click();
-  await expect(page.locator(".theory p")).toBeVisible();
+  await expect(page.locator(".theory-content")).toBeVisible();
   await page.getByRole("button", { name: "Zavrieť ťahák" }).click();
   await expect(page.locator(".theory")).not.toHaveAttribute("open");
 });
@@ -107,33 +107,58 @@ test("import a export dát v nastaveniach", async ({ page }) => {
   await expect(page.locator(".stats-totals")).toContainText("2chýb");
 });
 
-test("správny príklad automaticky pokračuje ďalším", async ({ page }) => {
-  await page.goto("/");
-  await page.locator('[data-module="degree"]').click();
-  // Degree is the number of edge ends at the highlighted vertex.
-  const answer = await page.locator(".vertex.current text").textContent();
-  // Read the graph notation to count incident edges, including loops twice.
-  const notation = await page.locator(".notation p").nth(1).textContent();
-  const edges = [...notation.matchAll(/([A-Z])[–→]([A-Z])/g)];
-  const expected = edges.reduce(
-    (sum, edge) =>
-      sum + Number(edge[1] === answer) + Number(edge[2] === answer),
-    0,
-  );
-  await page.locator("#answer").fill(String(expected));
-  await page.locator("#check").click();
-  await expect(page.locator('.feedback[data-complete="true"]')).toBeVisible();
-  await expect(page.locator("#answer")).toHaveValue("", { timeout: 4000 });
-  expect(
-    await page.evaluate(
-      () => JSON.parse(localStorage.getItem("adm-v1")).attempts,
-    ),
-  ).toMatchObject([{ solved: true, errors: 0, hints: 0 }]);
-});
+for (const trainingMode of ["learning", "testing"]) {
+  test(`správny príklad: pokračovanie v režime ${trainingMode}`, async ({
+    page,
+  }) => {
+    await page.addInitScript((trainingMode) => {
+      localStorage.setItem("adm-v1", JSON.stringify({ trainingMode }));
+    }, trainingMode);
+    await page.clock.install();
+    await page.goto("/");
+    await page.locator('[data-module="degree"]').click();
+    // Degree is the number of edge ends at the highlighted vertex.
+    const answer = await page.locator(".vertex.current text").textContent();
+    // Read the graph notation to count incident edges, including loops twice.
+    const notation = await page.locator(".notation p").nth(1).textContent();
+    const edges = [...notation.matchAll(/([A-Z])[–→]([A-Z])/g)];
+    const expected = edges.reduce(
+      (sum, edge) =>
+        sum + Number(edge[1] === answer) + Number(edge[2] === answer),
+      0,
+    );
+    await page.locator("#answer").fill(String(expected));
+    await page.locator("#check").click();
+    const completedUrl = page.url();
+    if (trainingMode === "learning") {
+      await expect(
+        page.locator('.feedback[data-complete="true"]'),
+      ).toBeVisible();
+      await page.clock.fastForward(10_000);
+      await expect(
+        page.locator('.feedback[data-complete="true"]'),
+      ).toBeVisible();
+      await expect(page.locator("#answer")).toHaveValue(String(expected));
+      expect(page.url()).toBe(completedUrl);
+      await page.locator("#dismiss-feedback").click();
+    } else {
+      await expect(page.locator(".feedback")).toHaveCount(0);
+      await page.clock.fastForward(2000);
+    }
+    await expect(page.locator("#answer")).toHaveValue("");
+    expect(page.url()).not.toBe(completedUrl);
+    expect(
+      await page.evaluate(
+        () => JSON.parse(localStorage.getItem("adm-v1")).attempts,
+      ),
+    ).toMatchObject([{ solved: true, errors: 0, hints: 0 }]);
+  });
+}
 
 test("vlastnosti: vyhodnotená voľba je konečná aj pri chybe", async ({
   page,
 }) => {
+  await page.clock.install();
   await page.goto("/");
   // Contradict the graph direction so the answer is wrong for every seed.
   const notation = await page.locator(".notation p").nth(1).textContent();
@@ -143,7 +168,11 @@ test("vlastnosti: vyhodnotená voľba je konečná aj pri chybe", async ({
   await expect(page.locator(".feedback.negative")).toBeVisible();
   await expect(page.locator("#check")).toBeDisabled();
   await expect(page.locator("[data-option]:enabled")).toHaveCount(0);
-  await expect(page.locator("#check")).toBeEnabled({ timeout: 6000 });
+  await page.clock.fastForward(10_000);
+  await expect(page.locator(".feedback.negative")).toBeVisible();
+  await expect(page.locator("#check")).toBeDisabled();
+  await page.locator("#next").click();
+  await expect(page.locator("#check")).toBeEnabled();
   const attempts = await page.evaluate(
     () => JSON.parse(localStorage.getItem("adm-v1")).attempts,
   );

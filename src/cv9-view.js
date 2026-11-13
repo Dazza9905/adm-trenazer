@@ -51,6 +51,19 @@ export function view9(q, s, { draft, answer, selected, cursor, length }) {
       : ""
   }${s.results.length ? `<details class="v9-results"><summary>Výsledky behov (${s.results.length}/${q.g.vertices.length}) · najlepšia cena ${Math.min(...s.results.map((r) => r.cost))}</summary>${s.results.map((r) => `<p>${r.route.join(" → ")} = ${r.cost}</p>`).join("")}</details>` : ""}<div class="step-choices" style="--vertex-columns:${Math.ceil(q.g.vertices.length / 2)}">${keys}</div><div class="history-controls"><button id="back" class="border" ${cursor === 0 ? "disabled" : ""}>← Späť</button><span>Krok ${cursor}</span><button id="forward" class="border" ${cursor === length - 1 ? "disabled" : ""}>Ďalej →</button></div>`;
 }
-export function matrix9(g) {
-  return `<div class="weight-matrix"><table aria-label="Matica váh"><thead><tr><th></th>${g.vertices.map((v) => `<th>${v}</th>`).join("")}</tr></thead><tbody>${g.vertices.map((a) => `<tr><th>${a}</th>${g.vertices.map((b) => `<td>${a === b ? "—" : (g.edges.find((e) => (e.a === a && e.b === b) || (e.b === a && e.a === b))?.weight ?? "∞")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+export function matrix9(g, editable = false) {
+  return `<div class="weight-matrix${editable ? " editable" : ""}"><table aria-label="Matica váh"><thead><tr><th></th>${g.vertices.map((v) => `<th>${v}</th>`).join("")}</tr></thead><tbody>${g.vertices
+    .map(
+      (a, row) =>
+        `<tr><th>${a}</th>${g.vertices
+          .map((b, column) => {
+            if (a === b) return "<td>—</td>";
+            const weight = g.edges.find(
+              (e) => (e.a === a && e.b === b) || (e.b === a && e.a === b),
+            )?.weight;
+            return `<td${editable && column > row ? ' class="matrix-upper"' : ""}>${editable && weight == null ? `<input class="matrix-note" data-matrix-note="${[a, b].sort().join("-")}" aria-label="Poznámka k ceste ${a}–${b}" maxlength="80" autocomplete="off">` : (weight ?? "∞")}</td>`;
+          })
+          .join("")}</tr>`,
+    )
+    .join("")}</tbody></table></div>`;
 }
